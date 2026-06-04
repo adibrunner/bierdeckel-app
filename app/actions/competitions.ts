@@ -91,7 +91,7 @@ const AddFixtureSchema = z.object({
   competitionId: z.string().min(1),
   homeParticipantId: z.string().min(1, "Heimteilnehmer auswählen."),
   awayParticipantId: z.string().min(1, "Gastteilnehmer auswählen."),
-  round: z.string().trim().optional(),
+  roundId: z.string().optional(),
   startsAt: z.string().min(1, "Anstoßzeit angeben."),
 });
 
@@ -109,7 +109,7 @@ export async function addFixture(
     competitionId: formData.get("competitionId"),
     homeParticipantId: formData.get("homeParticipantId"),
     awayParticipantId: formData.get("awayParticipantId"),
-    round: formData.get("round") || undefined,
+    roundId: formData.get("roundId") || undefined,
     startsAt: formData.get("startsAt"),
   });
 
@@ -117,20 +117,61 @@ export async function addFixture(
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  const { competitionId, homeParticipantId, awayParticipantId, round, startsAt } = parsed.data;
+  const { competitionId, homeParticipantId, awayParticipantId, roundId, startsAt } = parsed.data;
 
   await prisma.fixture.create({
     data: {
       competitionId,
       homeParticipantId,
       awayParticipantId,
-      round: round ?? null,
+      roundId: roundId ?? null,
       startsAt: new Date(startsAt),
     },
   });
 
   revalidatePath(`/competitions/${competitionId}`);
   revalidatePath(`/admin/competitions/${competitionId}`);
+}
+
+// ─── Round Management ─────────────────────────────────────────────────────────
+
+const RoundSchema = z.object({
+  competitionId: z.string().min(1),
+  name: z.string().min(1, "Name erforderlich.").trim(),
+  order: z.coerce.number().int().min(0).default(0),
+  matchFormat: z.enum(["SCORE", "SETS", "WINNER_ONLY"]).default("SCORE"),
+  setsToWin: z.coerce.number().int().min(1).optional(),
+  pointsExact: z.coerce.number().int().min(0).default(3),
+  pointsWinner: z.coerce.number().int().min(0).default(1),
+  pointsDraw: z.coerce.number().int().min(0).default(2),
+});
+
+export type RoundState = { errors?: Record<string, string[]>; error?: string } | undefined;
+
+export async function addRound(_prev: RoundState, formData: FormData): Promise<RoundState> {
+  await requireAdmin();
+  const parsed = RoundSchema.safeParse({
+    competitionId: formData.get("competitionId"),
+    name: formData.get("name"),
+    order: formData.get("order") || 0,
+    matchFormat: formData.get("matchFormat") || "SCORE",
+    setsToWin: formData.get("setsToWin") || undefined,
+    pointsExact: formData.get("pointsExact") || 3,
+    pointsWinner: formData.get("pointsWinner") || 1,
+    pointsDraw: formData.get("pointsDraw") || 2,
+  });
+  if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
+  const { competitionId, name, order, matchFormat, setsToWin, pointsExact, pointsWinner, pointsDraw } = parsed.data;
+  await prisma.competitionRound.create({
+    data: { competitionId, name, order, matchFormat, setsToWin: setsToWin ?? null, pointsExact, pointsWinner, pointsDraw },
+  });
+  revalidatePath(`/competitions/${competitionId}`);
+}
+
+export async function deleteRound(id: string, competitionId: string) {
+  await requireAdmin();
+  await prisma.competitionRound.delete({ where: { id } });
+  revalidatePath(`/competitions/${competitionId}`);
 }
 
 // ─── Submit / Update Prediction ────────────────────────────────────────────────
@@ -159,51 +200,62 @@ export async function submitPrediction(fixtureId: string, homeGoals: number, awa
 
 // ─── Enter Result & Score ──────────────────────────────────────────────────────
 
-export async function enterResult(fixtureId: string, homeGoals: number, awayGoals: number) {
+export async function enterResult(fixtureId: string, homeVal: number, awayVal: number) {
   await requireAdmin();
 
   const fixture = await prisma.fixture.findUnique({
     where: { id: fixtureId },
     include: {
       predictions: true,
+      round: true,
       competition: { include: { scoringRules: true } },
     },
   });
   if (!fixture) throw new Error("Spiel nicht gefunden.");
 
-  const rules = fixture.competition.scoringRules[0]?.ruleDefinition as {
-    correctScore: number;
-    correctWinner: number;
-    correctDraw: number;
-  } | null;
-
-  const actualHome = homeGoals;
-  const actualAway = awayGoals;
-  const actualWinner = actualHome > actualAway ? "home" : actualAway > actualHome ? "away" : "draw";
+  // Round-specific scoring takes priority over legacy scoringRules
+  const ptExact   = fixture.round?.pointsExact   ?? (fixture.competition.scoringRules[0]?.ruleDefinition as Record<string, number> | null)?.correctScore   ?? 3;
+  const ptWinner  = fixture.round?.pointsWinner  ?? (fixture.competition.scoringRules[0]?.ruleDefinition as Record<string, number> | null)?.correctWinner  ?? 1;
+  const ptDraw    = fixture.round?.pointsDraw    ?? (fixture.competition.scoringRules[0]?.ruleDefinition as Record<string, number> | null)?.correctDraw    ?? 2;
+  const format    = fixture.round?.matchFormat   ?? "SCORE";
 
   for (const pred of fixture.predictions) {
-    const p = pred.prediction as { home: number; away: number };
-    const predWinner = p.home > p.away ? "home" : p.away > p.home ? "away" : "draw";
+    const p = pred.prediction as { home: number; away: number } | { winner: string; home?: number; away?: number };
     let points = 0;
 
-    if (p.home === actualHome && p.away === actualAway) {
-      points = rules?.correctScore ?? 3;
-    } else if (predWinner === actualWinner && actualWinner === "draw") {
-      points = rules?.correctDraw ?? 2;
-    } else if (predWinner === actualWinner) {
-      points = rules?.correctWinner ?? 1;
+    if (format === "SCORE") {
+      const ps = p as { home: number; away: number };
+      const actualWinner = homeVal > awayVal ? "home" : awayVal > homeVal ? "away" : "draw";
+      const predWinner   = ps.home > ps.away ? "home" : ps.away > ps.home ? "away" : "draw";
+      if (ps.home === homeVal && ps.away === awayVal) {
+        points = ptExact;
+      } else if (predWinner === actualWinner && actualWinner === "draw") {
+        points = ptDraw;
+      } else if (predWinner === actualWinner) {
+        points = ptWinner;
+      }
+    } else if (format === "SETS") {
+      const ps = p as { home: number; away: number };
+      const actualWinner = homeVal > awayVal ? "home" : "away";
+      const predWinner   = ps.home > ps.away ? "home" : "away";
+      if (ps.home === homeVal && ps.away === awayVal) {
+        points = ptExact;
+      } else if (predWinner === actualWinner) {
+        points = ptWinner;
+      }
+    } else if (format === "WINNER_ONLY") {
+      const pw = p as { winner: string };
+      const actualWinner = homeVal > awayVal ? "home" : "away";
+      if (pw.winner === actualWinner) points = ptWinner;
     }
 
-    await prisma.prediction.update({
-      where: { id: pred.id },
-      data: { pointsAwarded: points },
-    });
+    await prisma.prediction.update({ where: { id: pred.id }, data: { pointsAwarded: points } });
   }
 
   await prisma.fixture.update({
     where: { id: fixtureId },
     data: {
-      result: { home: actualHome, away: actualAway },
+      result: { home: homeVal, away: awayVal },
       status: "FINISHED",
     },
   });

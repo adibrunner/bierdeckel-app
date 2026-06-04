@@ -12,12 +12,20 @@ interface Participant {
   shortName: string | null;
 }
 
+interface Round {
+  id: string;
+  name: string;
+  order: number;
+  matchFormat: string;
+}
+
 interface Props {
   competitionId: string;
   participants: Participant[];
+  rounds: Round[];
 }
 
-export function AddFixtureForm({ competitionId, participants }: Props) {
+export function AddFixtureForm({ competitionId, participants, rounds }: Props) {
   const [state, action, pending] = useActionState(addFixture, undefined);
 
   return (
@@ -55,8 +63,17 @@ export function AddFixtureForm({ competitionId, participants }: Props) {
           {state?.errors?.awayParticipantId && <p className="text-xs text-destructive">{state.errors.awayParticipantId[0]}</p>}
         </div>
         <div className="space-y-1">
-          <Label htmlFor="round" className="text-xs">Runde (optional)</Label>
-          <Input id="round" name="round" placeholder="z.B. Finale" />
+          <Label htmlFor="roundId" className="text-xs">Runde (optional)</Label>
+          <select
+            id="roundId"
+            name="roundId"
+            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">– Keine –</option>
+            {rounds.sort((a, b) => a.order - b.order).map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+          </select>
         </div>
         <div className="space-y-1">
           <Label htmlFor="startsAt" className="text-xs">Anstoß</Label>

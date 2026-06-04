@@ -125,6 +125,7 @@ model Competition {
 
   members          CompetitionMember[]
   fixtures         Fixture[]
+  rounds           CompetitionRound[]
   scoringRules     ScoringRule[]
   specialQuestions SpecialQuestion[]
 }
@@ -139,6 +140,29 @@ model CompetitionMember {
   @@id([competitionId, userId])
 }
 
+// How a match result is expressed and validated
+enum MatchFormat {
+  SCORE        // Any integer score, draws allowed (football, hockey)
+  SETS         // First to N sets/legs, no draw (darts, tennis)
+  WINNER_ONLY  // Just pick the winner (e.g. knockout bracket)
+}
+
+// A round/phase within a competition (group stage, QF, SF, …)
+model CompetitionRound {
+  id            String      @id @default(cuid())
+  competitionId String
+  name          String      // e.g. "Gruppenphase", "Viertelfinale"
+  order         Int         // Sort order for display
+  matchFormat   MatchFormat @default(SCORE)
+  setsToWin     Int?        // For SETS format: how many sets needed to win (e.g. 3)
+  pointsExact   Int         @default(3)
+  pointsWinner  Int         @default(1)
+  pointsDraw    Int         @default(2) // Only relevant for SCORE format
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  fixtures    Fixture[]
+}
+
 enum FixtureStatus {
   SCHEDULED
   LIVE
@@ -149,17 +173,18 @@ enum FixtureStatus {
 model Fixture {
   id                  String        @id @default(cuid())
   competitionId       String
+  roundId             String?       // Optional: linked to a CompetitionRound
   homeParticipantId   String
   awayParticipantId   String
-  round               String?
   startsAt            DateTime
   result              Json?
   status              FixtureStatus @default(SCHEDULED)
   createdAt           DateTime      @default(now())
 
-  competition      Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  homeParticipant  Participant  @relation("HomeParticipant", fields: [homeParticipantId], references: [id])
-  awayParticipant  Participant  @relation("AwayParticipant", fields: [awayParticipantId], references: [id])
+  competition      Competition      @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  round            CompetitionRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+  homeParticipant  Participant       @relation("HomeParticipant", fields: [homeParticipantId], references: [id])
+  awayParticipant  Participant       @relation("AwayParticipant", fields: [awayParticipantId], references: [id])
   predictions      Prediction[]
 }
 

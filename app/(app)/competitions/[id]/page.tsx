@@ -16,6 +16,7 @@ import { PredictionRow } from "@/components/competitions/prediction-row";
 import { EnterResultForm } from "@/components/competitions/enter-result-form";
 import { AddSpecialQuestionForm } from "@/components/competitions/add-special-question-form";
 import { SpecialQuestionCard } from "@/components/competitions/special-question-card";
+import { ManageRoundsPanel } from "@/components/competitions/manage-rounds-panel";
 import { CalendarDays, Trophy, Lock, Star } from "lucide-react";
 
 const fixtureStatusLabel: Record<string, string> = {
@@ -39,11 +40,13 @@ export default async function CompetitionDetailPage({
     where: { id },
     include: {
       scoringRules: true,
+      rounds: { orderBy: { order: "asc" } },
       fixtures: {
         orderBy: { startsAt: "asc" },
         include: {
           homeParticipant: true,
           awayParticipant: true,
+          round: true,
           predictions: {
             where: { userId },
           },
@@ -140,101 +143,157 @@ export default async function CompetitionDetailPage({
         </div>
       )}
 
-      {/* Add fixture (admin) */}
+      {/* Admin tools */}
       {isAdmin && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Spiel hinzufügen</CardTitle>
+            <CardTitle className="text-base">Verwaltung</CardTitle>
           </CardHeader>
-          <CardContent>
-            <AddFixtureForm competitionId={id} participants={participants} />
+          <CardContent className="space-y-6">
+            <ManageRoundsPanel competitionId={id} rounds={competition.rounds} />
+            <div>
+              <p className="text-sm font-semibold mb-3">Spiel hinzufügen</p>
+              <AddFixtureForm competitionId={id} participants={participants} rounds={competition.rounds} />
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Fixtures + predictions */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Spiele &amp; Tipps</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {competition.fixtures.length === 0 ? (
-            <p className="text-muted-foreground text-sm p-6">Noch keine Spiele eingetragen.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Datum</TableHead>
-                  <TableHead>Spiel</TableHead>
-                  <TableHead>Ergebnis</TableHead>
-                  <TableHead>Dein Tipp</TableHead>
-                  <TableHead className="text-right">Punkte</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {competition.fixtures.map((fixture) => {
-                  const locked = fixture.startsAt <= now || fixture.status === "FINISHED";
-                  const myPred = fixture.predictions[0];
-                  const predVal = myPred?.prediction as { home: number; away: number } | undefined;
-                  const result = fixture.result as { home: number; away: number } | null;
+      {/* Fixtures + predictions — grouped by round */}
+      {(() => {
+        if (competition.fixtures.length === 0) {
+          return (
+            <Card>
+              <CardContent className="p-6">
+                <p className="text-muted-foreground text-sm">Noch keine Spiele eingetragen.</p>
+              </CardContent>
+            </Card>
+          );
+        }
 
-                  return (
-                    <TableRow key={fixture.id}>
-                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
-                        <div className="flex items-center gap-1">
-                          {locked && <Lock className="h-3 w-3" />}
-                          {new Date(fixture.startsAt).toLocaleString("de-DE", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <span>{fixture.homeParticipant.name}</span>
-                        <span className="text-muted-foreground mx-1">–</span>
-                        <span>{fixture.awayParticipant.name}</span>
-                        {fixture.round && (
-                          <span className="ml-2 text-xs text-muted-foreground">({fixture.round})</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {fixture.status === "FINISHED" && result ? (
-                          <span className="font-semibold">{result.home} : {result.away}</span>
-                        ) : isAdmin ? (
-                          <EnterResultForm
-                            fixtureId={fixture.id}
-                            existingHome={result?.home}
-                            existingAway={result?.away}
-                          />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">–</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <PredictionRow
-                          fixtureId={fixture.id}
-                          existingHome={predVal?.home}
-                          existingAway={predVal?.away}
-                          locked={locked}
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {myPred?.pointsAwarded !== null && myPred?.pointsAwarded !== undefined ? (
-                          <span className="font-semibold">{myPred.pointsAwarded}</span>
-                        ) : (
-                          <span className="text-muted-foreground">–</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+        // Group fixtures: keyed by roundId (or null for unassigned)
+        const roundOrder = competition.rounds.map((r) => r.id);
+        const grouped = new Map<string | null, typeof competition.fixtures>();
+        for (const f of competition.fixtures) {
+          const key = f.roundId ?? null;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(f);
+        }
+        // Sort groups: rounds in order, then unassigned last
+        const sortedKeys: (string | null)[] = [
+          ...roundOrder.filter((rid) => grouped.has(rid)),
+          ...(grouped.has(null) ? [null] : []),
+        ];
+
+        return (
+          <div className="space-y-4">
+            {sortedKeys.map((roundId) => {
+              const roundObj = roundId ? competition.rounds.find((r) => r.id === roundId) : null;
+              const matchFormat = (roundObj?.matchFormat ?? "SCORE") as "SCORE" | "SETS" | "WINNER_ONLY";
+              const setsToWin = roundObj?.setsToWin ?? null;
+              const fixtures = grouped.get(roundId)!;
+
+              return (
+                <Card key={roundId ?? "__none__"}>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">
+                      {roundObj ? roundObj.name : "Spiele &amp; Tipps"}
+                      {roundObj && (
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {matchFormat === "SCORE" && "Ergebnis tipppen"}
+                          {matchFormat === "SETS" && `Sets tipppen${setsToWin ? ` (First to ${setsToWin})` : ""}`}
+                          {matchFormat === "WINNER_ONLY" && "Sieger tippen"}
+                        </span>
+                      )}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Datum</TableHead>
+                          <TableHead>Spiel</TableHead>
+                          <TableHead>Ergebnis</TableHead>
+                          <TableHead>Dein Tipp</TableHead>
+                          <TableHead className="text-right">Punkte</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {fixtures.map((fixture) => {
+                          const locked = fixture.startsAt <= now || fixture.status === "FINISHED";
+                          const myPred = fixture.predictions[0];
+                          const predVal = myPred?.prediction as { home: number; away: number } | undefined;
+                          const result = fixture.result as { home: number; away: number } | null;
+                          const fmtDisplay = matchFormat === "SETS" ? "-" : ":";
+
+                          return (
+                            <TableRow key={fixture.id}>
+                              <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                                <div className="flex items-center gap-1">
+                                  {locked && <Lock className="h-3 w-3" />}
+                                  {new Date(fixture.startsAt).toLocaleString("de-DE", {
+                                    day: "2-digit",
+                                    month: "2-digit",
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-medium">
+                                {fixture.homeParticipant.name}
+                                <span className="text-muted-foreground mx-1">–</span>
+                                {fixture.awayParticipant.name}
+                              </TableCell>
+                              <TableCell>
+                                {fixture.status === "FINISHED" && result ? (
+                                  <span className="font-semibold">
+                                    {result.home} {fmtDisplay} {result.away}
+                                  </span>
+                                ) : isAdmin ? (
+                                  <EnterResultForm
+                                    fixtureId={fixture.id}
+                                    matchFormat={matchFormat}
+                                    setsToWin={setsToWin}
+                                    homeName={fixture.homeParticipant.name}
+                                    awayName={fixture.awayParticipant.name}
+                                    existingHome={result?.home}
+                                    existingAway={result?.away}
+                                  />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">–</span>
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <PredictionRow
+                                  fixtureId={fixture.id}
+                                  matchFormat={matchFormat}
+                                  setsToWin={setsToWin}
+                                  homeName={fixture.homeParticipant.name}
+                                  awayName={fixture.awayParticipant.name}
+                                  existingHome={predVal?.home}
+                                  existingAway={predVal?.away}
+                                  locked={locked}
+                                />
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {myPred?.pointsAwarded !== null && myPred?.pointsAwarded !== undefined ? (
+                                  <span className="font-semibold">{myPred.pointsAwarded}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">–</span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Special Questions */}
       {(specialQuestions.length > 0 || isAdmin) && (
