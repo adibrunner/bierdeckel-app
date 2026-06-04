@@ -1,0 +1,279 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Auth.js required tables ──────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Module 1: User Management ────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  USER
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  role          Role      @default(USER)
+  passwordHash  String?
+  image         String?
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts         Account[]
+  sessions         Session[]
+  competitionUsers CompetitionMember[]
+  predictions      Prediction[]
+  dartsPlayer      DartsPlayer?
+  challengesSent   DartsChallenge[]    @relation("Challenger")
+  challengesRecv   DartsChallenge[]    @relation("Opponent")
+  dartsMatchesA    DartsMatch[]        @relation("PlayerA")
+  dartsMatchesB    DartsMatch[]        @relation("PlayerB")
+  dartsWins        DartsMatch[]        @relation("Winner")
+}
+
+// ─── Module 2: Sports Predictions ─────────────────────────────────────────────
+
+enum CompetitionStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Competition {
+  id          String            @id @default(cuid())
+  name        String
+  sport       String
+  description String?           @db.Text
+  startDate   DateTime
+  endDate     DateTime?
+  status      CompetitionStatus @default(ACTIVE)
+  createdById String
+  createdAt   DateTime          @default(now())
+
+  members       CompetitionMember[]
+  fixtures      Fixture[]
+  scoringRules  ScoringRule[]
+}
+
+model CompetitionMember {
+  competitionId String
+  userId        String
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([competitionId, userId])
+}
+
+enum FixtureStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELLED
+}
+
+model Fixture {
+  id            String        @id @default(cuid())
+  competitionId String
+  homeTeam      String
+  awayTeam      String
+  startsAt      DateTime
+  result        Json?
+  status        FixtureStatus @default(SCHEDULED)
+  createdAt     DateTime      @default(now())
+
+  competition Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  predictions Prediction[]
+}
+
+model Prediction {
+  id             String   @id @default(cuid())
+  fixtureId      String
+  userId         String
+  prediction     Json
+  pointsAwarded  Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fixture Fixture @relation(fields: [fixtureId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([fixtureId, userId])
+}
+
+model ScoringRule {
+  id             String @id @default(cuid())
+  competitionId  String
+  ruleDefinition Json
+
+  competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Module 3: Darts League ────────────────────────────────────────────────────
+
+model DartsLeague {
+  id          String   @id @default(cuid())
+  name        String
+  kFactor     Int      @default(32)
+  startingElo Int      @default(1000)
+  matchConfig Json
+  createdAt   DateTime @default(now())
+
+  matches DartsMatch[]
+}
+
+model DartsPlayer {
+  id         String @id @default(cuid())
+  userId     String @unique
+  currentElo Int    @default(1000)
+
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eloHistory EloHistory[]
+}
+
+enum ChallengeStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  DECLINED
+  EXPIRED
+}
+
+model DartsChallenge {
+  id           String          @id @default(cuid())
+  challengerId String
+  opponentId   String
+  status       ChallengeStatus @default(PENDING)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  challenger User        @relation("Challenger", fields: [challengerId], references: [id])
+  opponent   User        @relation("Opponent", fields: [opponentId], references: [id])
+  match      DartsMatch?
+}
+
+model DartsMatch {
+  id          String    @id @default(cuid())
+  leagueId    String?
+  challengeId String?   @unique
+  playerAId   String
+  playerBId   String
+  winnerId    String?
+  matchConfig Json
+  playedAt    DateTime  @default(now())
+
+  league    DartsLeague?   @relation(fields: [leagueId], references: [id])
+  challenge DartsChallenge? @relation(fields: [challengeId], references: [id])
+  playerA   User           @relation("PlayerA", fields: [playerAId], references: [id])
+  playerB   User           @relation("PlayerB", fields: [playerBId], references: [id])
+  winner    User?          @relation("Winner", fields: [winnerId], references: [id])
+  legs      DartsLeg[]
+  eloHistory EloHistory[]
+}
+
+model DartsLeg {
+  id        String @id @default(cuid())
+  matchId   String
+  legNumber Int
+  winnerId  String?
+  legData   Json?
+
+  match DartsMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+}
+
+model EloHistory {
+  id           String   @id @default(cuid())
+  playerId     String
+  matchId      String
+  ratingBefore Int
+  ratingAfter  Int
+  createdAt    DateTime @default(now())
+
+  player DartsPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match  DartsMatch  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+}
+
+// ─── Module 4: Personal Management (Admin only) ───────────────────────────────
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  title          String
+  description    String?      @db.Text
+  isRecurring    Boolean      @default(false)
+  recurrenceRule String?
+  nextDueDate    DateTime?
+  priority       TaskPriority @default(MEDIUM)
+  completed      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  completions TaskCompletion[]
+}
+
+model TaskCompletion {
+  id          String   @id @default(cuid())
+  taskId      String
+  completedAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  content   String   @db.Text
+  category  String?
+  archived  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
