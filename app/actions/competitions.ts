@@ -28,6 +28,7 @@ const CreateCompetitionSchema = z.object({
   description: z.string().trim().optional(),
   startDate: z.string().min(1, "Startdatum muss angegeben werden."),
   endDate: z.string().optional(),
+  participantType: z.enum(["PLAYER", "COUNTRY", "TEAM"]).default("TEAM"),
   correctScore: z.coerce.number().int().min(0).default(3),
   correctWinner: z.coerce.number().int().min(0).default(1),
   correctDraw: z.coerce.number().int().min(0).default(2),
@@ -49,6 +50,7 @@ export async function createCompetition(
     description: formData.get("description"),
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate") || undefined,
+    participantType: formData.get("participantType") || "TEAM",
     correctScore: formData.get("correctScore"),
     correctWinner: formData.get("correctWinner"),
     correctDraw: formData.get("correctDraw"),
@@ -58,7 +60,7 @@ export async function createCompetition(
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  const { name, sport, description, startDate, endDate, correctScore, correctWinner, correctDraw } =
+  const { name, sport, description, startDate, endDate, participantType, correctScore, correctWinner, correctDraw } =
     parsed.data;
 
   const competition = await prisma.competition.create({
@@ -68,6 +70,7 @@ export async function createCompetition(
       description,
       startDate: new Date(startDate),
       endDate: endDate ? new Date(endDate) : null,
+      participantType,
       createdById: session.user.id,
       scoringRules: {
         create: {
@@ -86,8 +89,9 @@ export async function createCompetition(
 
 const AddFixtureSchema = z.object({
   competitionId: z.string().min(1),
-  homeTeam: z.string().min(1, "Heimmannschaft angeben.").trim(),
-  awayTeam: z.string().min(1, "Gastmannschaft angeben.").trim(),
+  homeParticipantId: z.string().min(1, "Heimteilnehmer auswählen."),
+  awayParticipantId: z.string().min(1, "Gastteilnehmer auswählen."),
+  round: z.string().trim().optional(),
   startsAt: z.string().min(1, "Anstoßzeit angeben."),
 });
 
@@ -103,8 +107,9 @@ export async function addFixture(
 
   const parsed = AddFixtureSchema.safeParse({
     competitionId: formData.get("competitionId"),
-    homeTeam: formData.get("homeTeam"),
-    awayTeam: formData.get("awayTeam"),
+    homeParticipantId: formData.get("homeParticipantId"),
+    awayParticipantId: formData.get("awayParticipantId"),
+    round: formData.get("round") || undefined,
     startsAt: formData.get("startsAt"),
   });
 
@@ -112,13 +117,14 @@ export async function addFixture(
     return { errors: parsed.error.flatten().fieldErrors };
   }
 
-  const { competitionId, homeTeam, awayTeam, startsAt } = parsed.data;
+  const { competitionId, homeParticipantId, awayParticipantId, round, startsAt } = parsed.data;
 
   await prisma.fixture.create({
     data: {
       competitionId,
-      homeTeam,
-      awayTeam,
+      homeParticipantId,
+      awayParticipantId,
+      round: round ?? null,
       startsAt: new Date(startsAt),
     },
   });

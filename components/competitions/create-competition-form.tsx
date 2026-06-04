@@ -28,6 +28,19 @@ export function CreateCompetitionForm() {
               <Input id="sport" name="sport" placeholder="z.B. Fußball" required />
               {state?.errors?.sport && <p className="text-xs text-destructive">{state.errors.sport[0]}</p>}
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="participantType">Teilnehmertyp</Label>
+              <select
+                id="participantType"
+                name="participantType"
+                defaultValue="TEAM"
+                className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              >
+                <option value="TEAM">Teams / Vereine</option>
+                <option value="COUNTRY">Länder</option>
+                <option value="PLAYER">Spieler</option>
+              </select>
+            </div>
             <div className="space-y-1.5 sm:col-span-2">
               <Label htmlFor="description">Beschreibung (optional)</Label>
               <Input id="description" name="description" placeholder="Kurze Beschreibung…" />

@@ -68,6 +68,7 @@ model User {
   sessions         Session[]
   competitionUsers CompetitionMember[]
   predictions      Prediction[]
+  specialAnswers   SpecialAnswer[]
   dartsPlayer      DartsPlayer?
   challengesSent   DartsChallenge[]    @relation("Challenger")
   challengesRecv   DartsChallenge[]    @relation("Opponent")
@@ -78,6 +79,32 @@ model User {
 
 // ─── Module 2: Sports Predictions ─────────────────────────────────────────────
 
+// Global participant pool — shared across competitions
+enum ParticipantType {
+  PLAYER
+  COUNTRY
+  TEAM
+}
+
+model Participant {
+  id          String          @id @default(cuid())
+  name        String                          // Display name (e.g. "Luke Littler", "Deutschland")
+  shortName   String?
+  type        ParticipantType
+  imageUrl    String?
+  firstName   String?
+  lastName    String?
+  nickname    String?
+  worldRank   Int?
+  country     String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  homeFixtures       Fixture[]        @relation("HomeParticipant")
+  awayFixtures       Fixture[]        @relation("AwayParticipant")
+  specialAnswersSingle SpecialAnswer[] @relation("SingleParticipantAnswer")
+}
+
 enum CompetitionStatus {
   ACTIVE
   FINISHED
@@ -85,19 +112,21 @@ enum CompetitionStatus {
 }
 
 model Competition {
-  id          String            @id @default(cuid())
-  name        String
-  sport       String
-  description String?           @db.Text
-  startDate   DateTime
-  endDate     DateTime?
-  status      CompetitionStatus @default(ACTIVE)
-  createdById String
-  createdAt   DateTime          @default(now())
+  id               String            @id @default(cuid())
+  name             String
+  sport            String
+  description      String?           @db.Text
+  startDate        DateTime
+  endDate          DateTime?
+  status           CompetitionStatus @default(ACTIVE)
+  participantType  ParticipantType   @default(TEAM)
+  createdById      String
+  createdAt        DateTime          @default(now())
 
-  members       CompetitionMember[]
-  fixtures      Fixture[]
-  scoringRules  ScoringRule[]
+  members          CompetitionMember[]
+  fixtures         Fixture[]
+  scoringRules     ScoringRule[]
+  specialQuestions SpecialQuestion[]
 }
 
 model CompetitionMember {
@@ -118,17 +147,20 @@ enum FixtureStatus {
 }
 
 model Fixture {
-  id            String        @id @default(cuid())
-  competitionId String
-  homeTeam      String
-  awayTeam      String
-  startsAt      DateTime
-  result        Json?
-  status        FixtureStatus @default(SCHEDULED)
-  createdAt     DateTime      @default(now())
+  id                  String        @id @default(cuid())
+  competitionId       String
+  homeParticipantId   String
+  awayParticipantId   String
+  round               String?
+  startsAt            DateTime
+  result              Json?
+  status              FixtureStatus @default(SCHEDULED)
+  createdAt           DateTime      @default(now())
 
-  competition Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
-  predictions Prediction[]
+  competition      Competition  @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  homeParticipant  Participant  @relation("HomeParticipant", fields: [homeParticipantId], references: [id])
+  awayParticipant  Participant  @relation("AwayParticipant", fields: [awayParticipantId], references: [id])
+  predictions      Prediction[]
 }
 
 model Prediction {
@@ -152,6 +184,51 @@ model ScoringRule {
   ruleDefinition Json
 
   competition Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+}
+
+// ─── Special Questions (Spezialtipps) ─────────────────────────────────────────
+
+enum SpecialQuestionType {
+  SINGLE_PARTICIPANT    // Pick one participant (e.g. "Wer wird Weltmeister?")
+  MULTIPLE_PARTICIPANTS // Pick N participants (e.g. "Wer kommt ins Halbfinale?")
+  NUMBER               // Enter a number (e.g. "Wie viele 9-Darter?")
+}
+
+model SpecialQuestion {
+  id                     String              @id @default(cuid())
+  competitionId          String
+  question               String
+  description            String?             @db.Text
+  type                   SpecialQuestionType
+  points                 Int
+  deadline               DateTime
+  requiredCount          Int?                // For MULTIPLE_PARTICIPANTS: how many to pick
+  usePercentageTolerance Boolean             @default(false) // For NUMBER: partial points
+  correctAnswer          String?             // JSON: participant IDs or number
+  isActive               Boolean             @default(true)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+
+  competition Competition    @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  answers     SpecialAnswer[]
+}
+
+model SpecialAnswer {
+  id                 String   @id @default(cuid())
+  specialQuestionId  String
+  userId             String
+  answer             String   // JSON: participant ID(s) or number
+  pointsAwarded      Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  specialQuestion    SpecialQuestion @relation(fields: [specialQuestionId], references: [id], onDelete: Cascade)
+  user               User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Convenience relation for SINGLE_PARTICIPANT answers
+  singleParticipantId String?
+  singleParticipant   Participant?    @relation("SingleParticipantAnswer", fields: [singleParticipantId], references: [id])
+
+  @@unique([specialQuestionId, userId])
 }
 
 // ─── Module 3: Darts League ────────────────────────────────────────────────────

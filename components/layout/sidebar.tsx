@@ -32,7 +32,8 @@ const adminNavItems = [
 
 const adminOnlyItems = [
   { href: "/admin/users", label: "Benutzer", icon: Users },
-  { href: "/admin/competitions", label: "Verwaltung", icon: Settings },
+  { href: "/admin/participants", label: "Teilnehmer", icon: Trophy },
+  { href: "/admin/competitions", label: "Wettbewerbe", icon: Settings },
 ];
 
 export function Sidebar() {

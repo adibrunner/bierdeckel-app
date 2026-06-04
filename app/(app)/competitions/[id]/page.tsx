@@ -14,7 +14,9 @@ import {
 import { AddFixtureForm } from "@/components/competitions/add-fixture-form";
 import { PredictionRow } from "@/components/competitions/prediction-row";
 import { EnterResultForm } from "@/components/competitions/enter-result-form";
-import { CalendarDays, Trophy, Lock } from "lucide-react";
+import { AddSpecialQuestionForm } from "@/components/competitions/add-special-question-form";
+import { SpecialQuestionCard } from "@/components/competitions/special-question-card";
+import { CalendarDays, Trophy, Lock, Star } from "lucide-react";
 
 const fixtureStatusLabel: Record<string, string> = {
   SCHEDULED: "Geplant",
@@ -40,6 +42,8 @@ export default async function CompetitionDetailPage({
       fixtures: {
         orderBy: { startsAt: "asc" },
         include: {
+          homeParticipant: true,
+          awayParticipant: true,
           predictions: {
             where: { userId },
           },
@@ -49,6 +53,20 @@ export default async function CompetitionDetailPage({
   });
 
   if (!competition) notFound();
+
+  const specialQuestions = await prisma.specialQuestion.findMany({
+    where: { competitionId: id, isActive: true },
+    orderBy: { deadline: "asc" },
+    include: {
+      answers: { where: { userId } },
+    },
+  });
+
+  const participants = await prisma.participant.findMany({
+    where: { type: competition.participantType },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, shortName: true },
+  });
 
   const rules = competition.scoringRules[0]?.ruleDefinition as {
     correctScore: number;
@@ -109,7 +127,7 @@ export default async function CompetitionDetailPage({
           </div>
         </div>
         <Badge variant={competition.status === "ACTIVE" ? "default" : "secondary"}>
-          {{ ACTIVE: "Aktiv", ARCHIVED: "Archiviert" }[competition.status] ?? competition.status}
+          {{ ACTIVE: "Aktiv", FINISHED: "Abgeschlossen", ARCHIVED: "Archiviert" }[competition.status] ?? competition.status}
         </Badge>
       </div>
 
@@ -129,7 +147,7 @@ export default async function CompetitionDetailPage({
             <CardTitle className="text-base">Spiel hinzufügen</CardTitle>
           </CardHeader>
           <CardContent>
-            <AddFixtureForm competitionId={id} />
+            <AddFixtureForm competitionId={id} participants={participants} />
           </CardContent>
         </Card>
       )}
@@ -174,7 +192,12 @@ export default async function CompetitionDetailPage({
                         </div>
                       </TableCell>
                       <TableCell className="font-medium">
-                        {fixture.homeTeam} – {fixture.awayTeam}
+                        <span>{fixture.homeParticipant.name}</span>
+                        <span className="text-muted-foreground mx-1">–</span>
+                        <span>{fixture.awayParticipant.name}</span>
+                        {fixture.round && (
+                          <span className="ml-2 text-xs text-muted-foreground">({fixture.round})</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         {fixture.status === "FINISHED" && result ? (
@@ -212,6 +235,34 @@ export default async function CompetitionDetailPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Special Questions */}
+      {(specialQuestions.length > 0 || isAdmin) && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Star className="h-5 w-5" /> Spezialtipps
+          </h2>
+          {isAdmin && <AddSpecialQuestionForm competitionId={id} />}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {specialQuestions.map((sq) => (
+              <SpecialQuestionCard
+                key={sq.id}
+                question={{
+                  ...sq,
+                  type: sq.type as "SINGLE_PARTICIPANT" | "MULTIPLE_PARTICIPANTS" | "NUMBER",
+                }}
+                participants={participants}
+                existingAnswer={
+                  sq.answers[0]
+                    ? { answer: sq.answers[0].answer, pointsAwarded: sq.answers[0].pointsAwarded }
+                    : undefined
+                }
+                isAdmin={isAdmin}
+              />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Leaderboard */}
       {standings.length > 0 && (
