@@ -21,18 +21,18 @@ import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/competitions", label: "Competitions", icon: Trophy },
-  { href: "/darts", label: "Darts", icon: Target },
+  { href: "/competitions", label: "Tipps", icon: Trophy },
+  { href: "/darts", label: "Double-Trouble-Liga", icon: Target },
 ];
 
 const adminNavItems = [
-  { href: "/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/notes", label: "Notes", icon: FileText },
+  { href: "/tasks", label: "Aufgaben", icon: CheckSquare },
+  { href: "/notes", label: "Notizen", icon: FileText },
 ];
 
 const adminOnlyItems = [
-  { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/competitions", label: "Manage", icon: Settings },
+  { href: "/admin/users", label: "Benutzer", icon: Users },
+  { href: "/admin/competitions", label: "Verwaltung", icon: Settings },
 ];
 
 export function Sidebar() {
@@ -76,7 +76,7 @@ export function Sidebar() {
           <>
             <Separator className="my-2" />
             <p className="px-3 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Personal
+              Persönlich
             </p>
             {adminNavItems.map(({ href, label, icon: Icon }) => (
               <Link
@@ -127,11 +127,11 @@ export function Sidebar() {
             {session?.user?.name ?? session?.user?.email}
           </p>
           <p className="truncate text-xs text-muted-foreground mt-0.5">
-            {isAdmin ? "Admin" : "Member"}
+            {isAdmin ? "Admin" : "Mitglied"}
           </p>
         </div>
         <form action={logout}>
-          <Button variant="ghost" size="icon" type="submit" title="Sign out">
+          <Button variant="ghost" size="icon" type="submit" title="Abmelden">
             <LogOut className="h-4 w-4" />
           </Button>
         </form>

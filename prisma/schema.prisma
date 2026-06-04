@@ -80,6 +80,7 @@ model User {
 
 enum CompetitionStatus {
   ACTIVE
+  FINISHED
   ARCHIVED
 }
 
