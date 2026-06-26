@@ -139,6 +139,12 @@ export default async function DartsPage() {
               <p className="text-xs text-muted-foreground mt-1">
                 Rang #{players.findIndex((p) => p.userId === userId) + 1} von {players.length}
               </p>
+              <Link
+                href={`/darts/players/${userId}`}
+                className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-3 w-full")}
+              >
+                Mein Profil
+              </Link>
             </CardContent>
           </Card>
           <Card>

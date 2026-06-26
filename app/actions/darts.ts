@@ -395,7 +395,7 @@ export async function adminOverrideMatch(
     include: { challenge: true },
   });
   if (!match) return { error: "Match nicht gefunden." };
-  if (match.status !== "DISPUTED") return { error: "Nur eskalierte Matches können überschrieben werden." };
+  // Admin can override any match (DISPUTED, CONFIRMED, PENDING_CONFIRMATION)
 
   const winnerId = legsA > legsB ? match.playerAId : match.playerBId;
 
@@ -485,6 +485,9 @@ const CreateLeagueSchema = z.object({
   kFactor: z.coerce.number().int().min(1).default(32),
   startingElo: z.coerce.number().int().min(1).default(1000),
   legsToWin: z.coerce.number().int().min(1).default(3),
+  startingScore: z.coerce.number().int().refine((v) => v === 301 || v === 501, {
+    message: "Muss 301 oder 501 sein.",
+  }).default(501),
 });
 
 export type LeagueState = { error?: string; errors?: Record<string, string[]> } | undefined;
@@ -500,17 +503,18 @@ export async function createLeague(
     kFactor: formData.get("kFactor") || 32,
     startingElo: formData.get("startingElo") || 1000,
     legsToWin: formData.get("legsToWin") || 3,
+    startingScore: formData.get("startingScore") || 501,
   });
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
 
-  const { name, kFactor, startingElo, legsToWin } = parsed.data;
+  const { name, kFactor, startingElo, legsToWin, startingScore } = parsed.data;
 
   await prisma.dartsLeague.create({
     data: {
       name,
       kFactor,
       startingElo,
-      matchConfig: { legsToWin },
+      matchConfig: { legsToWin, startingScore },
     },
   });
   revalidatePath("/darts");

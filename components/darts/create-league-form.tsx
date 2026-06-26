@@ -28,6 +28,18 @@ export function CreateLeagueForm() {
             )}
           </div>
           <div className="space-y-1.5">
+            <Label htmlFor="league-starting-score" className="text-sm">Spielmodus</Label>
+            <select
+              id="league-starting-score"
+              name="startingScore"
+              defaultValue="501"
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            >
+              <option value="501">501</option>
+              <option value="301">301</option>
+            </select>
+          </div>
+          <div className="space-y-1.5">
             <Label htmlFor="league-legs" className="text-sm">Legs zum Sieg</Label>
             <Input id="league-legs" name="legsToWin" type="number" min={1} defaultValue={3} />
           </div>
