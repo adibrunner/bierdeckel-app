@@ -28,10 +28,40 @@ export default async function DartsPage() {
   const leagues = await prisma.dartsLeague.findMany({
     orderBy: { createdAt: "desc" },
     include: {
-      members: { select: { playerId: true } },
       _count: { select: { matches: true } },
+      members: {
+        orderBy: { currentElo: "desc" },
+        include: {
+          player: {
+            include: {
+              user: { select: { id: true, name: true, email: true } },
+              eloHistory: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                where: { leagueId: undefined }, // fetched per league below
+              },
+            },
+          },
+        },
+      },
     },
   });
+
+  // For each league, get the last ELO history entry per member scoped to that league
+  const leaguesWithTrend = await Promise.all(
+    leagues.map(async (l) => {
+      const membersWithTrend = await Promise.all(
+        l.members.map(async (m) => {
+          const lastHistory = await prisma.eloHistory.findFirst({
+            where: { playerId: m.player.id, leagueId: l.id },
+            orderBy: { createdAt: "desc" },
+          });
+          return { ...m, lastHistory };
+        })
+      );
+      return { ...l, membersWithTrend };
+    })
+  );
 
   const league = leagues[0] ?? null;
 
@@ -133,18 +163,28 @@ export default async function DartsPage() {
         </Card>
       )}
 
-      {/* My current ELO */}
+      {/* My stats */}
       {myPlayer && (
         <div className="grid gap-4 sm:grid-cols-3">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Dein ELO</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Meine Ligen-ELOs</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">{myPlayer.currentElo}</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Rang #{players.findIndex((p) => p.userId === userId) + 1} von {players.length}
-              </p>
+            <CardContent className="space-y-1">
+              {leaguesWithTrend
+                .filter((l) => l.members.some((m) => m.playerId === myPlayer.id))
+                .map((l) => {
+                  const membership = l.members.find((m) => m.playerId === myPlayer.id);
+                  return (
+                    <div key={l.id} className="flex justify-between text-sm">
+                      <span className="text-muted-foreground truncate">{l.name}</span>
+                      <span className="font-semibold ml-2">{membership?.currentElo ?? "–"}</span>
+                    </div>
+                  );
+                })}
+              {leaguesWithTrend.every((l) => !l.members.some((m) => m.playerId === myPlayer.id)) && (
+                <p className="text-xs text-muted-foreground">Noch keiner Liga beigetreten.</p>
+              )}
               <Link
                 href={`/darts/players/${userId}`}
                 className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-3 w-full")}
@@ -245,64 +285,70 @@ export default async function DartsPage() {
         </Card>
       )}
 
-      {/* Standings */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Rangliste</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {players.length === 0 ? (
-            <p className="text-muted-foreground text-sm p-6">Noch keine Spieler registriert.</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">#</TableHead>
-                  <TableHead>Spieler</TableHead>
-                  <TableHead className="text-right">ELO</TableHead>
-                  <TableHead className="text-right">Trend</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {players.map((p, i) => {
-                  const last = p.eloHistory[0];
-                  const diff = last ? last.ratingAfter - last.ratingBefore : 0;
-                  const isMe = p.userId === userId;
-                  return (
-                    <TableRow key={p.id} className={isMe ? "bg-muted/40" : undefined}>
-                      <TableCell className="text-muted-foreground font-medium">{i + 1}</TableCell>
-                      <TableCell className="font-medium">
-                        <Link href={`/darts/players/${p.userId}`} className="hover:underline">
-                          {p.user.name ?? p.user.email}
-                        </Link>
-                        {isMe && (
-                          <Badge variant="outline" className="ml-2 text-xs">Du</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-semibold">{p.currentElo}</TableCell>
-                      <TableCell className="text-right">
-                        {diff > 0 ? (
-                          <span className="text-green-600 flex items-center justify-end gap-0.5 text-xs">
-                            <TrendingUp className="h-3.5 w-3.5" />+{diff}
-                          </span>
-                        ) : diff < 0 ? (
-                          <span className="text-destructive flex items-center justify-end gap-0.5 text-xs">
-                            <TrendingDown className="h-3.5 w-3.5" />{diff}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground flex items-center justify-end gap-0.5 text-xs">
-                            <Minus className="h-3.5 w-3.5" />0
-                          </span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Per-league standings */}
+      {leaguesWithTrend.map((l) => (
+        <Card key={l.id}>
+          <CardHeader>
+            <CardTitle className="text-base">Rangliste: {l.name}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {l.membersWithTrend.length === 0 ? (
+              <p className="text-muted-foreground text-sm p-6">Noch keine Mitglieder in dieser Liga.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-10">#</TableHead>
+                    <TableHead>Spieler</TableHead>
+                    <TableHead className="text-right">ELO</TableHead>
+                    <TableHead className="text-right">Trend</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {l.membersWithTrend
+                    .slice()
+                    .sort((a, b) => b.currentElo - a.currentElo)
+                    .map((m, i) => {
+                      const diff = m.lastHistory
+                        ? m.lastHistory.ratingAfter - m.lastHistory.ratingBefore
+                        : 0;
+                      const isMe = m.player.userId === userId;
+                      return (
+                        <TableRow key={m.playerId} className={isMe ? "bg-muted/40" : undefined}>
+                          <TableCell className="text-muted-foreground font-medium">{i + 1}</TableCell>
+                          <TableCell className="font-medium">
+                            <Link href={`/darts/players/${m.player.userId}`} className="hover:underline">
+                              {m.player.user.name ?? m.player.user.email}
+                            </Link>
+                            {isMe && (
+                              <Badge variant="outline" className="ml-2 text-xs">Du</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">{m.currentElo}</TableCell>
+                          <TableCell className="text-right">
+                            {diff > 0 ? (
+                              <span className="text-green-600 flex items-center justify-end gap-0.5 text-xs">
+                                <TrendingUp className="h-3.5 w-3.5" />+{diff}
+                              </span>
+                            ) : diff < 0 ? (
+                              <span className="text-destructive flex items-center justify-end gap-0.5 text-xs">
+                                <TrendingDown className="h-3.5 w-3.5" />{diff}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground flex items-center justify-end gap-0.5 text-xs">
+                                <Minus className="h-3.5 w-3.5" />0
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      ))}
 
       {/* Recent matches */}
       {recentMatches.length > 0 && (

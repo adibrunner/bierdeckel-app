@@ -267,14 +267,16 @@ model DartsLeague {
   matchConfig Json
   createdAt   DateTime @default(now())
 
-  matches DartsMatch[]
-  members DartsLeagueMember[]
+  matches    DartsMatch[]
+  members    DartsLeagueMember[]
+  eloHistory EloHistory[]
 }
 
 model DartsLeagueMember {
-  leagueId String
-  playerId String
-  joinedAt DateTime @default(now())
+  leagueId   String
+  playerId   String
+  currentElo Int      @default(1000)
+  joinedAt   DateTime @default(now())
 
   league DartsLeague @relation(fields: [leagueId], references: [id], onDelete: Cascade)
   player DartsPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
@@ -357,12 +359,14 @@ model EloHistory {
   id           String   @id @default(cuid())
   playerId     String
   matchId      String
+  leagueId     String?
   ratingBefore Int
   ratingAfter  Int
   createdAt    DateTime @default(now())
 
-  player DartsPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  match  DartsMatch  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player DartsPlayer  @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match  DartsMatch   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  league DartsLeague? @relation(fields: [leagueId], references: [id], onDelete: SetNull)
 }
 
 // ─── Module 4: Personal Management (Admin only) ───────────────────────────────

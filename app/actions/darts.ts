@@ -57,13 +57,17 @@ export async function registerDartsPlayer(): Promise<{ error?: string }> {
 export async function joinLeague(leagueId: string): Promise<{ error?: string }> {
   const session = await requireAuth();
 
-  const player = await prisma.dartsPlayer.findUnique({ where: { userId: session.user.id } });
+  const [player, league] = await Promise.all([
+    prisma.dartsPlayer.findUnique({ where: { userId: session.user.id } }),
+    prisma.dartsLeague.findUnique({ where: { id: leagueId } }),
+  ]);
   if (!player) return { error: "Du bist noch nicht als Spieler registriert." };
+  if (!league) return { error: "Liga nicht gefunden." };
 
   await prisma.dartsLeagueMember.upsert({
     where: { leagueId_playerId: { leagueId, playerId: player.id } },
-    create: { leagueId, playerId: player.id },
-    update: {},
+    create: { leagueId, playerId: player.id, currentElo: league.startingElo },
+    update: {},  // don't reset ELO if already a member
   });
 
   revalidatePath("/darts");
@@ -172,7 +176,8 @@ async function applyElo(
   opponentUserId: string,
   legsA: number,
   legsB: number,
-  kFactor: number
+  kFactor: number,
+  leagueId?: string | null
 ) {
   const [playerA, playerB] = await Promise.all([
     tx.dartsPlayer.findUnique({ where: { userId: challengerUserId } }),
@@ -180,19 +185,46 @@ async function applyElo(
   ]);
   if (!playerA || !playerB) throw new Error("Spieler nicht gefunden.");
 
-  const actualA = legsA > legsB ? 1 : 0;
-  const { newA, newB } = calcElo(playerA.currentElo, playerB.currentElo, actualA, kFactor);
+  // Prefer per-league ELO; fall back to global DartsPlayer.currentElo
+  const [memberA, memberB] = leagueId ? await Promise.all([
+    tx.dartsLeagueMember.findUnique({ where: { leagueId_playerId: { leagueId, playerId: playerA.id } } }),
+    tx.dartsLeagueMember.findUnique({ where: { leagueId_playerId: { leagueId, playerId: playerB.id } } }),
+  ]) : [null, null];
 
-  await Promise.all([
-    tx.dartsPlayer.update({ where: { userId: challengerUserId }, data: { currentElo: newA } }),
-    tx.dartsPlayer.update({ where: { userId: opponentUserId }, data: { currentElo: newB } }),
+  const eloA = memberA?.currentElo ?? playerA.currentElo;
+  const eloB = memberB?.currentElo ?? playerB.currentElo;
+
+  const actualA = legsA > legsB ? 1 : 0;
+  const { newA, newB } = calcElo(eloA, eloB, actualA, kFactor);
+
+  const updates: Promise<unknown>[] = [
     tx.eloHistory.createMany({
       data: [
-        { playerId: playerA.id, matchId, ratingBefore: playerA.currentElo, ratingAfter: newA },
-        { playerId: playerB.id, matchId, ratingBefore: playerB.currentElo, ratingAfter: newB },
+        { playerId: playerA.id, matchId, leagueId: leagueId ?? null, ratingBefore: eloA, ratingAfter: newA },
+        { playerId: playerB.id, matchId, leagueId: leagueId ?? null, ratingBefore: eloB, ratingAfter: newB },
       ],
     }),
-  ]);
+  ];
+
+  if (leagueId && memberA) {
+    updates.push(tx.dartsLeagueMember.update({
+      where: { leagueId_playerId: { leagueId, playerId: playerA.id } },
+      data: { currentElo: newA },
+    }));
+  } else {
+    updates.push(tx.dartsPlayer.update({ where: { userId: challengerUserId }, data: { currentElo: newA } }));
+  }
+
+  if (leagueId && memberB) {
+    updates.push(tx.dartsLeagueMember.update({
+      where: { leagueId_playerId: { leagueId, playerId: playerB.id } },
+      data: { currentElo: newB },
+    }));
+  } else {
+    updates.push(tx.dartsPlayer.update({ where: { userId: opponentUserId }, data: { currentElo: newB } }));
+  }
+
+  await Promise.all(updates);
 }
 
 async function reverseElo(
@@ -201,12 +233,18 @@ async function reverseElo(
 ) {
   const history = await tx.eloHistory.findMany({ where: { matchId } });
   await Promise.all(
-    history.map((h) =>
-      tx.dartsPlayer.update({
+    history.map((h) => {
+      if (h.leagueId) {
+        return tx.dartsLeagueMember.update({
+          where: { leagueId_playerId: { leagueId: h.leagueId, playerId: h.playerId } },
+          data: { currentElo: h.ratingBefore },
+        });
+      }
+      return tx.dartsPlayer.update({
         where: { id: h.playerId },
         data: { currentElo: h.ratingBefore },
-      })
-    )
+      });
+    })
   );
   await tx.eloHistory.deleteMany({ where: { matchId } });
 }
@@ -312,7 +350,7 @@ export async function recordMatch(
       }),
     });
 
-    await applyElo(tx, match.id, challenge.challengerId, challenge.opponentId, legsA, legsB, kFactor);
+    await applyElo(tx, match.id, challenge.challengerId, challenge.opponentId, legsA, legsB, kFactor, league?.id);
   });
 
   revalidatePath("/darts");
@@ -449,7 +487,7 @@ export async function adminOverrideMatch(
         disputeReason: null,
       },
     });
-    await applyElo(tx, matchId, match.playerAId, match.playerBId, legsA, legsB, kFactor);
+    await applyElo(tx, matchId, match.playerAId, match.playerBId, legsA, legsB, kFactor, match.leagueId);
     if (match.challengeId) {
       await tx.dartsChallenge.update({
         where: { id: match.challengeId },
