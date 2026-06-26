@@ -6,8 +6,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { RecordMatchForm } from "@/components/darts/record-match-form";
-import { Target, Trophy, ArrowLeft } from "lucide-react";
+import { MatchConfirmation } from "@/components/darts/match-confirmation";
+import { Target, Trophy, ArrowLeft, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+const CHALLENGE_STATUS_LABELS: Record<string, string> = {
+  PENDING: "Offen",
+  ACCEPTED: "Angenommen",
+  COMPLETED: "Abgeschlossen",
+  DECLINED: "Abgelehnt",
+  EXPIRED: "Abgelaufen",
+};
+
+const MATCH_STATUS_LABELS: Record<string, string> = {
+  PENDING_CONFIRMATION: "Ausstehend",
+  CONFIRMED: "Bestätigt",
+  DISPUTED: "Eskaliert",
+};
 
 export default async function MatchPage({
   params,
@@ -26,7 +41,8 @@ export default async function MatchPage({
       opponent: { select: { id: true, name: true, email: true } },
       match: {
         include: {
-          winner: { select: { name: true, email: true } },
+          winner: { select: { id: true, name: true, email: true } },
+          submittedBy: { select: { id: true, name: true, email: true } },
           eloHistory: {
             include: { player: { include: { user: { select: { name: true, email: true } } } } },
           },
@@ -45,8 +61,22 @@ export default async function MatchPage({
   const leagueConfig = league?.matchConfig as { legsToWin?: number } | null;
   const legsToWin = leagueConfig?.legsToWin ?? 3;
 
-  const challengerName = challenge.challenger.name ?? challenge.challenger.email;
-  const opponentName = challenge.opponent.name ?? challenge.opponent.email;
+  const challengerName = challenge.challenger.name ?? challenge.challenger.email ?? "";
+  const opponentName = challenge.opponent.name ?? challenge.opponent.email ?? "";
+
+  const match = challenge.match;
+  const matchConfig = match?.matchConfig as { legsA: number; legsB: number } | null;
+
+  // Is the current user the one who needs to confirm?
+  const isConfirmer =
+    match?.status === "PENDING_CONFIRMATION" &&
+    match.submittedById !== null &&
+    (match.playerAId === match.submittedById
+      ? match.playerBId === userId
+      : match.playerAId === userId);
+
+  // Is the current user the one who submitted (waiting)?
+  const isSubmitter = match?.submittedById === userId;
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
@@ -56,6 +86,7 @@ export default async function MatchPage({
       >
         <ArrowLeft className="h-4 w-4 mr-1" /> Liga-Übersicht
       </Link>
+
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Target className="h-6 w-6" /> Match
@@ -65,13 +96,29 @@ export default async function MatchPage({
         </p>
       </div>
 
+      {/* Details card */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
             <CardTitle className="text-base">Details</CardTitle>
-            <Badge variant={challenge.status === "COMPLETED" ? "outline" : "default"}>
-              {{ PENDING: "Offen", ACCEPTED: "Angenommen", COMPLETED: "Abgeschlossen", DECLINED: "Abgelehnt", EXPIRED: "Abgelaufen" }[challenge.status]}
-            </Badge>
+            <div className="flex gap-2 flex-wrap">
+              <Badge variant={challenge.status === "COMPLETED" ? "outline" : "default"}>
+                {CHALLENGE_STATUS_LABELS[challenge.status] ?? challenge.status}
+              </Badge>
+              {match && (
+                <Badge
+                  variant={
+                    match.status === "CONFIRMED"
+                      ? "outline"
+                      : match.status === "DISPUTED"
+                      ? "destructive"
+                      : "secondary"
+                  }
+                >
+                  {MATCH_STATUS_LABELS[match.status] ?? match.status}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
@@ -83,11 +130,48 @@ export default async function MatchPage({
             <span className="text-muted-foreground">Herausforderung</span>
             <span>{new Date(challenge.createdAt).toLocaleDateString("de-DE")}</span>
           </div>
+          {match?.playedAt && (
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Gespielt am</span>
+              <span>{new Date(match.playedAt).toLocaleDateString("de-DE")}</span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {/* Result — already recorded */}
-      {challenge.match ? (
+      {/* Disputed — escalated to admin */}
+      {match?.status === "DISPUTED" && (
+        <Card className="border-destructive/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <ShieldAlert className="h-4 w-4" /> An Admin eskaliert
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p className="text-muted-foreground">
+              Dieses Match wurde angefochten. Ein Admin wird das Ergebnis überprüfen und ggf. korrigieren.
+            </p>
+            {match.disputeReason && (
+              <div className="rounded-md bg-muted px-3 py-2 text-sm">
+                <span className="font-medium">Begründung: </span>{match.disputeReason}
+              </div>
+            )}
+            {matchConfig && (
+              <div className="flex items-center justify-center text-xl font-bold py-1">
+                <span>{challengerName}</span>
+                <span className="mx-4 text-muted-foreground">{matchConfig.legsA} – {matchConfig.legsB}</span>
+                <span>{opponentName}</span>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground text-center">
+              Eingetragen von: {match.submittedBy?.name ?? match.submittedBy?.email}
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Confirmed — show final result */}
+      {match?.status === "CONFIRMED" && matchConfig && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
@@ -95,41 +179,68 @@ export default async function MatchPage({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {(() => {
-              const config = challenge.match.matchConfig as { legsA: number; legsB: number };
-              return (
-                <>
-                  <div className="flex items-center justify-between text-lg font-bold">
-                    <span>{challengerName}</span>
-                    <span className="text-2xl">{config.legsA} – {config.legsB}</span>
-                    <span>{opponentName}</span>
+            <div className="flex items-center justify-between text-lg font-bold">
+              <span>{challengerName}</span>
+              <span className="text-2xl">{matchConfig.legsA} – {matchConfig.legsB}</span>
+              <span>{opponentName}</span>
+            </div>
+            <p className="text-sm text-center text-muted-foreground">
+              Sieger: <strong>{match.winner?.name ?? match.winner?.email}</strong>
+            </p>
+            <div className="divide-y text-sm">
+              {match.eloHistory.map((h) => {
+                const diff = h.ratingAfter - h.ratingBefore;
+                return (
+                  <div key={h.id} className="flex justify-between py-2">
+                    <span>{h.player.user.name ?? h.player.user.email}</span>
+                    <span>
+                      {h.ratingBefore} →{" "}
+                      <strong>{h.ratingAfter}</strong>{" "}
+                      <span className={diff >= 0 ? "text-green-600" : "text-destructive"}>
+                        ({diff >= 0 ? "+" : ""}{diff})
+                      </span>
+                    </span>
                   </div>
-                  <p className="text-sm text-center text-muted-foreground">
-                    Sieger: <strong>{challenge.match.winner?.name ?? challenge.match.winner?.email}</strong>
-                  </p>
-                  <div className="divide-y text-sm">
-                    {challenge.match.eloHistory.map((h) => {
-                      const diff = h.ratingAfter - h.ratingBefore;
-                      return (
-                        <div key={h.id} className="flex justify-between py-2">
-                          <span>{h.player.user.name ?? h.player.user.email}</span>
-                          <span>
-                            {h.ratingBefore} →{" "}
-                            <strong>{h.ratingAfter}</strong>{" "}
-                            <span className={diff >= 0 ? "text-green-600" : "text-destructive"}>
-                              ({diff >= 0 ? "+" : ""}{diff})
-                            </span>
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
+                );
+              })}
+            </div>
           </CardContent>
         </Card>
-      ) : challenge.status === "ACCEPTED" ? (
+      )}
+
+      {/* Pending confirmation — show to the non-submitter */}
+      {match?.status === "PENDING_CONFIRMATION" && matchConfig && isConfirmer && (
+        <Card className="border-primary/40">
+          <CardHeader>
+            <CardTitle className="text-base">Ergebnis bestätigen</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MatchConfirmation
+              matchId={match.id}
+              challengeId={challenge.id}
+              submittedByName={match.submittedBy?.name ?? match.submittedBy?.email ?? "Dein Mitspieler"}
+              config={matchConfig}
+              challengerName={challengerName}
+              opponentName={opponentName}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Pending confirmation — waiting view for the submitter */}
+      {match?.status === "PENDING_CONFIRMATION" && isSubmitter && (
+        <Card>
+          <CardContent className="py-6 text-center space-y-1">
+            <p className="text-sm font-medium">Warte auf Bestätigung</p>
+            <p className="text-sm text-muted-foreground">
+              Der andere Spieler muss das Ergebnis noch bestätigen oder anfechten.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No match yet — show record form */}
+      {!match && challenge.status === "ACCEPTED" && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Ergebnis eintragen</CardTitle>
@@ -138,12 +249,14 @@ export default async function MatchPage({
             <RecordMatchForm
               challengeId={challenge.id}
               legsToWin={legsToWin}
-              challengerName={challengerName ?? ""}
-              opponentName={opponentName ?? ""}
+              challengerName={challengerName}
+              opponentName={opponentName}
             />
           </CardContent>
         </Card>
-      ) : (
+      )}
+
+      {!match && challenge.status !== "ACCEPTED" && (
         <Card>
           <CardContent className="py-6 text-center text-sm text-muted-foreground">
             Die Herausforderung muss erst angenommen werden, bevor ein Ergebnis eingetragen werden kann.

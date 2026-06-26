@@ -26,6 +26,16 @@ export default async function ChallengesPage() {
   const session = await auth();
   const userId = session?.user?.id!;
 
+  // Expire stale challenges on page load (no cron needed)
+  await prisma.dartsChallenge.updateMany({
+    where: {
+      OR: [{ challengerId: userId }, { opponentId: userId }],
+      status: "PENDING",
+      expiresAt: { lt: new Date() },
+    },
+    data: { status: "EXPIRED" },
+  });
+
   const myPlayer = await prisma.dartsPlayer.findUnique({ where: { userId } });
 
   // Other registered players I can challenge
@@ -55,7 +65,7 @@ export default async function ChallengesPage() {
     },
   });
 
-  // Accepted challenges where I'm involved and no match yet
+  // Accepted challenges where I'm involved and no match yet, OR match pending confirmation
   const acceptedPending = [...received, ...sent]
     .filter((c) => c.status === "ACCEPTED" && !c.match)
     .map((c) => ({ ...c, isChallenger: "challenger" in c }));
@@ -134,6 +144,11 @@ export default async function ChallengesPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(c.createdAt).toLocaleDateString("de-DE")}
+                    {c.status === "PENDING" && c.expiresAt && (
+                      <span className="ml-2 text-amber-600">
+                        · läuft ab {new Date(c.expiresAt).toLocaleDateString("de-DE")}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -170,6 +185,11 @@ export default async function ChallengesPage() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {new Date(c.createdAt).toLocaleDateString("de-DE")}
+                    {c.status === "PENDING" && c.expiresAt && (
+                      <span className="ml-2 text-amber-600">
+                        · läuft ab {new Date(c.expiresAt).toLocaleDateString("de-DE")}
+                      </span>
+                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

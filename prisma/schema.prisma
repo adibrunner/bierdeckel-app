@@ -75,6 +75,7 @@ model User {
   dartsMatchesA    DartsMatch[]        @relation("PlayerA")
   dartsMatchesB    DartsMatch[]        @relation("PlayerB")
   dartsWins        DartsMatch[]        @relation("Winner")
+  dartsSubmitted   DartsMatch[]        @relation("MatchSubmitter")
 }
 
 // ─── Module 2: Sports Predictions ─────────────────────────────────────────────
@@ -291,6 +292,7 @@ model DartsChallenge {
   challengerId String
   opponentId   String
   status       ChallengeStatus @default(PENDING)
+  expiresAt    DateTime?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
 
@@ -299,21 +301,31 @@ model DartsChallenge {
   match      DartsMatch?
 }
 
-model DartsMatch {
-  id          String    @id @default(cuid())
-  leagueId    String?
-  challengeId String?   @unique
-  playerAId   String
-  playerBId   String
-  winnerId    String?
-  matchConfig Json
-  playedAt    DateTime  @default(now())
+enum MatchStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  DISPUTED
+}
 
-  league    DartsLeague?   @relation(fields: [leagueId], references: [id])
+model DartsMatch {
+  id              String      @id @default(cuid())
+  leagueId        String?
+  challengeId     String?     @unique
+  playerAId       String
+  playerBId       String
+  winnerId        String?
+  matchConfig     Json
+  playedAt        DateTime    @default(now())
+  status          MatchStatus @default(PENDING_CONFIRMATION)
+  submittedById   String?
+  disputeReason   String?
+
+  league    DartsLeague?    @relation(fields: [leagueId], references: [id])
   challenge DartsChallenge? @relation(fields: [challengeId], references: [id])
-  playerA   User           @relation("PlayerA", fields: [playerAId], references: [id])
-  playerB   User           @relation("PlayerB", fields: [playerBId], references: [id])
-  winner    User?          @relation("Winner", fields: [winnerId], references: [id])
+  playerA   User            @relation("PlayerA", fields: [playerAId], references: [id])
+  playerB   User            @relation("PlayerB", fields: [playerBId], references: [id])
+  winner    User?           @relation("Winner", fields: [winnerId], references: [id])
+  submittedBy User?         @relation("MatchSubmitter", fields: [submittedById], references: [id])
   legs      DartsLeg[]
   eloHistory EloHistory[]
 }

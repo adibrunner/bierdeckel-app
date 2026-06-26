@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { CreateLeagueForm } from "@/components/darts/create-league-form";
+import { AdminMatchControls } from "@/components/darts/admin-match-controls";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,7 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Target, Users } from "lucide-react";
+import { Target, Users, ShieldAlert } from "lucide-react";
 
 export default async function AdminDartsPage() {
   const session = await auth();
@@ -30,6 +31,20 @@ export default async function AdminDartsPage() {
 
   const totalMatches = await prisma.dartsMatch.count();
 
+  const disputedMatches = await prisma.dartsMatch.findMany({
+    where: { status: "DISPUTED" },
+    orderBy: { playedAt: "desc" },
+    include: {
+      playerA: { select: { name: true, email: true } },
+      playerB: { select: { name: true, email: true } },
+      submittedBy: { select: { name: true, email: true } },
+      league: { select: { matchConfig: true } },
+    },
+  });
+
+  const league = await prisma.dartsLeague.findFirst({ orderBy: { createdAt: "desc" } });
+  const defaultLegsToWin = (league?.matchConfig as { legsToWin?: number } | null)?.legsToWin ?? 3;
+
   return (
     <div className="space-y-8">
       <div>
@@ -40,6 +55,57 @@ export default async function AdminDartsPage() {
           {players.length} Spieler · {totalMatches} Matches gespielt
         </p>
       </div>
+
+      {/* Disputed matches queue */}
+      {disputedMatches.length > 0 && (
+        <Card className="border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-destructive">
+              <ShieldAlert className="h-4 w-4" />
+              Eskalierte Matches ({disputedMatches.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {disputedMatches.map((m) => {
+              const cfg = m.matchConfig as { legsA: number; legsB: number };
+              const legsToWin =
+                (m.league?.matchConfig as { legsToWin?: number } | null)?.legsToWin ?? defaultLegsToWin;
+              const challengerName = m.playerA.name ?? m.playerA.email ?? "Spieler A";
+              const opponentName = m.playerB.name ?? m.playerB.email ?? "Spieler B";
+              return (
+                <div key={m.id} className="space-y-3 rounded-md border p-4">
+                  <div className="flex items-start justify-between gap-2 flex-wrap">
+                    <div>
+                      <p className="font-medium text-sm">
+                        {challengerName} vs. {opponentName}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Gespielt: {new Date(m.playedAt).toLocaleDateString("de-DE")} ·
+                        Eingetragen von: {m.submittedBy?.name ?? m.submittedBy?.email}
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="text-xs shrink-0">
+                      {cfg.legsA} – {cfg.legsB}
+                    </Badge>
+                  </div>
+                  {m.disputeReason && (
+                    <div className="rounded bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">Begründung: </span>
+                      {m.disputeReason}
+                    </div>
+                  )}
+                  <AdminMatchControls
+                    matchId={m.id}
+                    legsToWin={legsToWin}
+                    challengerName={challengerName}
+                    opponentName={opponentName}
+                  />
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Create league */}
       <CreateLeagueForm />

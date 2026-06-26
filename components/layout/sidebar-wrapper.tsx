@@ -8,9 +8,20 @@ export async function SidebarWrapper() {
 
   let pendingChallenges = 0;
   if (userId) {
-    pendingChallenges = await prisma.dartsChallenge.count({
-      where: { opponentId: userId, status: "PENDING" },
-    });
+    // Count: open challenges awaiting my response + matches I need to confirm
+    const [openChallenges, matchesNeedingConfirmation] = await Promise.all([
+      prisma.dartsChallenge.count({
+        where: { opponentId: userId, status: "PENDING" },
+      }),
+      prisma.dartsMatch.count({
+        where: {
+          status: "PENDING_CONFIRMATION",
+          submittedById: { not: userId },
+          OR: [{ playerAId: userId }, { playerBId: userId }],
+        },
+      }),
+    ]);
+    pendingChallenges = openChallenges + matchesNeedingConfirmation;
   }
 
   return <Sidebar pendingChallenges={pendingChallenges} />;
