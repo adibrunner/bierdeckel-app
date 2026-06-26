@@ -100,6 +100,19 @@ export default async function DartsPage() {
     },
   });
 
+  const myMatchesToConfirm = await prisma.dartsMatch.findMany({
+    where: {
+      status: "PENDING_CONFIRMATION",
+      submittedById: { not: userId },
+      OR: [{ playerAId: userId }, { playerBId: userId }],
+    },
+    include: {
+      challenge: true,
+      playerA: { select: { id: true, name: true, email: true } },
+      playerB: { select: { id: true, name: true, email: true } },
+    },
+  });
+
   const leagueConfig = league?.matchConfig as { legsToWin?: number } | null;
 
   return (
@@ -259,8 +272,8 @@ export default async function DartsPage() {
         </Card>
       )}
 
-      {/* Accepted challenges needing result */}
-      {myAcceptedChallenges.length > 0 && (
+      {/* Accepted challenges needing result + matches needing confirmation */}
+      {(myAcceptedChallenges.length > 0 || myMatchesToConfirm.length > 0) && (
         <Card className="border-primary/40 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="text-base flex items-center gap-2 text-primary">
@@ -277,6 +290,19 @@ export default async function DartsPage() {
                   <span className="text-sm">Match gegen <strong>{otherName}</strong> – Ergebnis fehlt noch</span>
                   <Link href={`/darts/matches/${c.id}`} className={cn(buttonVariants({ size: "sm" }))}>
                     Eintragen
+                  </Link>
+                </div>
+              );
+            })}
+            {myMatchesToConfirm.map((m) => {
+              const other = m.playerAId === userId ? m.playerB : m.playerA;
+              const otherName = other.name ?? other.email;
+              const linkId = m.challengeId ?? m.id;
+              return (
+                <div key={m.id} className="flex items-center justify-between rounded-md border bg-background px-4 py-2">
+                  <span className="text-sm">Match gegen <strong>{otherName}</strong> – Bitte bestätigen</span>
+                  <Link href={`/darts/matches/${linkId}`} className={cn(buttonVariants({ size: "sm", variant: "default" }))}>
+                    Bestätigen
                   </Link>
                 </div>
               );
