@@ -601,6 +601,45 @@ export async function createLeague(
   return {};
 }
 
+const UpdateLeagueSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1, "Name erforderlich.").trim(),
+  kFactor: z.coerce.number().int().min(1),
+  startingElo: z.coerce.number().int().min(1),
+  legsToWin: z.coerce.number().int().min(1),
+  startingScore: z.coerce.number().int().refine((v) => v === 301 || v === 501, {
+    message: "Muss 301 oder 501 sein.",
+  }),
+});
+
+export async function updateLeague(
+  _prev: LeagueState,
+  formData: FormData
+): Promise<LeagueState> {
+  await requireAdmin();
+
+  const parsed = UpdateLeagueSchema.safeParse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    kFactor: formData.get("kFactor"),
+    startingElo: formData.get("startingElo"),
+    legsToWin: formData.get("legsToWin"),
+    startingScore: formData.get("startingScore"),
+  });
+  if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
+
+  const { id, name, kFactor, startingElo, legsToWin, startingScore } = parsed.data;
+
+  await prisma.dartsLeague.update({
+    where: { id },
+    data: { name, kFactor, startingElo, matchConfig: { legsToWin, startingScore } },
+  });
+
+  revalidatePath("/darts");
+  revalidatePath("/admin/darts");
+  return {};
+}
+
 export async function deleteLeague(id: string) {
   await requireAdmin();
 

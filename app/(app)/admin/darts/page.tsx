@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Target, Users, ShieldAlert } from "lucide-react";
 import { DeleteLeagueButton } from "@/components/darts/delete-league-button";
+import { EditLeagueButton } from "@/components/darts/edit-league-button";
 
 export default async function AdminDartsPage() {
   const session = await auth();
@@ -170,8 +171,11 @@ export default async function AdminDartsPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <DeleteLeagueButton leagueId={l.id} leagueName={l.name} />
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-1">
+                          <EditLeagueButton league={l} />
+                          <DeleteLeagueButton leagueId={l.id} leagueName={l.name} />
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
