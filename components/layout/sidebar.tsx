@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
+import { useState, useEffect } from "react";
 import {
   LayoutDashboard,
   Trophy,
@@ -12,6 +13,8 @@ import {
   Users,
   Settings,
   LogOut,
+  Menu,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { logout } from "@/app/actions/auth";
@@ -45,6 +48,12 @@ export function Sidebar({ pendingChallenges = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "ADMIN";
+  const [open, setOpen] = useState(false);
+
+  // Close sidebar on navigation
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   const initials = session?.user?.name
     ? session.user.name
@@ -55,12 +64,8 @@ export function Sidebar({ pendingChallenges = 0 }: SidebarProps) {
         .slice(0, 2)
     : "?";
 
-  return (
-    <aside className="flex h-screen w-56 flex-col border-r bg-card px-3 py-4 shrink-0">
-      <div className="mb-6 px-2">
-        <span className="text-lg font-bold tracking-tight">Bierdeckel</span>
-      </div>
-
+  const navContent = (
+    <>
       <nav className="flex-1 space-y-1">
         {navItems.map(({ href, label, icon: Icon, badge }) => (
           <Link
@@ -147,6 +152,53 @@ export function Sidebar({ pendingChallenges = 0 }: SidebarProps) {
           </Button>
         </form>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Mobile top bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 flex h-14 items-center justify-between border-b bg-card px-4">
+        <span className="text-base font-bold tracking-tight">Bierdeckel</span>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
+          aria-label="Menü öffnen"
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          {!open && pendingChallenges > 0 && (
+            <span className="absolute top-2 right-3 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold text-destructive-foreground leading-none">
+              {pendingChallenges > 9 ? "9+" : pendingChallenges}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Mobile overlay backdrop */}
+      {open && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-black/40"
+          onClick={() => setOpen(false)}
+        />
+      )}
+
+      {/* Mobile slide-in drawer */}
+      <aside
+        className={cn(
+          "md:hidden fixed top-14 left-0 bottom-0 z-40 flex w-56 flex-col border-r bg-card px-3 py-4 transition-transform duration-200",
+          open ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        {navContent}
+      </aside>
+
+      {/* Desktop permanent sidebar */}
+      <aside className="hidden md:flex h-screen w-56 flex-col border-r bg-card px-3 py-4 shrink-0">
+        <div className="mb-6 px-2">
+          <span className="text-lg font-bold tracking-tight">Bierdeckel</span>
+        </div>
+        {navContent}
+      </aside>
+    </>
   );
 }
