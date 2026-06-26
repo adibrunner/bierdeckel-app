@@ -9,9 +9,14 @@ export async function proxy(request: NextRequest) {
 
   const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 
+  // next-auth v5 uses "authjs.session-token" (HTTP) or "__Secure-authjs.session-token" (HTTPS)
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
+    cookieName:
+      request.nextUrl.protocol === "https:"
+        ? "__Secure-authjs.session-token"
+        : "authjs.session-token",
   });
 
   if (!token && !isPublic) {
@@ -32,5 +37,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)" ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
