@@ -85,6 +85,72 @@ export async function createCompetition(
   redirect(`/competitions/${competition.id}`);
 }
 
+// ─── Update Competition ────────────────────────────────────────────────────────
+
+const UpdateCompetitionSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(2, "Name muss mindestens 2 Zeichen lang sein.").trim(),
+  sport: z.string().min(2, "Sport muss angegeben werden.").trim(),
+  description: z.string().trim().optional(),
+  startDate: z.string().min(1, "Startdatum muss angegeben werden."),
+  endDate: z.string().optional(),
+  status: z.enum(["ACTIVE", "FINISHED", "ARCHIVED"]).default("ACTIVE"),
+});
+
+export type UpdateCompetitionState =
+  | { errors?: Record<string, string[]>; error?: string }
+  | undefined;
+
+export async function updateCompetition(
+  _prev: UpdateCompetitionState,
+  formData: FormData
+): Promise<UpdateCompetitionState> {
+  await requireAdmin();
+
+  const parsed = UpdateCompetitionSchema.safeParse({
+    id: formData.get("id"),
+    name: formData.get("name"),
+    sport: formData.get("sport"),
+    description: formData.get("description") || undefined,
+    startDate: formData.get("startDate"),
+    endDate: formData.get("endDate") || undefined,
+    status: formData.get("status") || "ACTIVE",
+  });
+
+  if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
+
+  const { id, name, sport, description, startDate, endDate, status } = parsed.data;
+
+  await prisma.competition.update({
+    where: { id },
+    data: {
+      name,
+      sport,
+      description: description ?? null,
+      startDate: new Date(startDate),
+      endDate: endDate ? new Date(endDate) : null,
+      status,
+    },
+  });
+
+  revalidatePath("/competitions");
+  revalidatePath("/admin/competitions");
+  revalidatePath(`/competitions/${id}`);
+  return {};
+}
+
+// ─── Delete Competition ────────────────────────────────────────────────────────
+
+export async function deleteCompetition(id: string): Promise<{ error?: string }> {
+  await requireAdmin();
+
+  await prisma.competition.delete({ where: { id } });
+
+  revalidatePath("/competitions");
+  revalidatePath("/admin/competitions");
+  return {};
+}
+
 // ─── Add Fixture ───────────────────────────────────────────────────────────────
 
 const AddFixtureSchema = z.object({
