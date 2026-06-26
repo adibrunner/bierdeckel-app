@@ -34,6 +34,7 @@ const adminOnlyItems = [
   { href: "/admin/users", label: "Benutzer", icon: Users },
   { href: "/admin/participants", label: "Teilnehmer", icon: Trophy },
   { href: "/admin/competitions", label: "Wettbewerbe", icon: Settings },
+  { href: "/admin/darts", label: "Darts-Liga", icon: Target },
 ];
 
 export function Sidebar() {
