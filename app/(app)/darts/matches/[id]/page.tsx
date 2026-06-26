@@ -58,8 +58,35 @@ export default async function MatchPage({
     challenge.challengerId === userId || challenge.opponentId === userId || isAdmin;
   if (!isInvolved) notFound();
 
-  const league = await prisma.dartsLeague.findFirst({ orderBy: { createdAt: "desc" } });
-  const leagueConfig = league?.matchConfig as { legsToWin?: number } | null;
+  // Fetch leagues both players are members of
+  const [challengerPlayer, opponentPlayer] = await Promise.all([
+    prisma.dartsPlayer.findUnique({
+      where: { userId: challenge.challengerId },
+      select: { id: true, leagueMemberships: { select: { leagueId: true } } },
+    }),
+    prisma.dartsPlayer.findUnique({
+      where: { userId: challenge.opponentId },
+      select: { id: true, leagueMemberships: { select: { leagueId: true } } },
+    }),
+  ]);
+
+  const challengerLeagueIds = new Set(challengerPlayer?.leagueMemberships.map((m) => m.leagueId) ?? []);
+  const opponentLeagueIds = new Set(opponentPlayer?.leagueMemberships.map((m) => m.leagueId) ?? []);
+  const sharedLeagueIds = [...challengerLeagueIds].filter((id) => opponentLeagueIds.has(id));
+
+  const sharedLeagues = sharedLeagueIds.length > 0
+    ? await prisma.dartsLeague.findMany({
+        where: { id: { in: sharedLeagueIds } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, matchConfig: true },
+      })
+    : await prisma.dartsLeague.findMany({
+        orderBy: { createdAt: "desc" },
+        select: { id: true, name: true, matchConfig: true },
+      });
+
+  const defaultLeague = sharedLeagues[0] ?? null;
+  const leagueConfig = defaultLeague?.matchConfig as { legsToWin?: number } | null;
   const legsToWin = leagueConfig?.legsToWin ?? 3;
 
   const challengerName = challenge.challenger.name ?? challenge.challenger.email ?? "";
@@ -296,6 +323,8 @@ export default async function MatchPage({
               legsToWin={legsToWin}
               challengerName={challengerName}
               opponentName={opponentName}
+              leagues={sharedLeagues}
+              defaultLeagueId={defaultLeague?.id}
             />
           </CardContent>
         </Card>

@@ -8,16 +8,24 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ArrowLeft } from "lucide-react";
 
+interface League {
+  id: string;
+  name: string;
+  matchConfig: unknown;
+}
+
 interface Props {
   challengeId: string;
   legsToWin: number;
   challengerName: string;
   opponentName: string;
+  leagues: League[];
+  defaultLeagueId?: string;
 }
 
 type LegEntry = { winner: "A" | "B" | null; checkout: string };
 
-export function RecordMatchForm({ challengeId, legsToWin, challengerName, opponentName }: Props) {
+export function RecordMatchForm({ challengeId, legsToWin, challengerName, opponentName, leagues, defaultLeagueId }: Props) {
   const [state, action, pending] = useActionState(recordMatch, undefined);
   const [legsA, setLegsA] = useState<number>(legsToWin);
   const [legsB, setLegsB] = useState<number>(0);
@@ -25,6 +33,7 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
   const [legEntries, setLegEntries] = useState<LegEntry[]>([]);
   const [avgA, setAvgA] = useState("");
   const [avgB, setAvgB] = useState("");
+  const [selectedLeagueId, setSelectedLeagueId] = useState<string>(defaultLeagueId ?? leagues[0]?.id ?? "");
   const router = useRouter();
 
   useEffect(() => {
@@ -61,6 +70,7 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
         <input type="hidden" name="challengeId" value={challengeId} />
         <input type="hidden" name="legsA" value={legsA} />
         <input type="hidden" name="legsB" value={legsB} />
+        {selectedLeagueId && <input type="hidden" name="leagueId" value={selectedLeagueId} />}
         {avgA && <input type="hidden" name="avgA" value={avgA} />}
         {avgB && <input type="hidden" name="avgB" value={avgB} />}
         {legEntries.map((e, i) => (
@@ -180,6 +190,32 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
 
   return (
     <div className="space-y-5">
+      {/* League picker */}
+      {leagues.length > 1 && (
+        <div className="space-y-1.5">
+          <Label className="text-sm">Liga</Label>
+          <div className="flex flex-wrap gap-2">
+            {leagues.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setSelectedLeagueId(l.id)}
+                className={`rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                  selectedLeagueId === l.id
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-input hover:bg-muted"
+                }`}
+              >
+                {l.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {leagues.length === 1 && (
+        <p className="text-xs text-muted-foreground">Liga: <strong>{leagues[0].name}</strong></p>
+      )}
+
       <div className="space-y-2">
         <Label className="text-sm">Ergebnis (Legs)</Label>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

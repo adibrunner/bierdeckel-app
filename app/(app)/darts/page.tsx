@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import Link from "next/link";
-import { registerDartsPlayer } from "@/app/actions/darts";
+import { registerDartsPlayer, joinLeague, leaveLeague } from "@/app/actions/darts";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,9 +25,15 @@ export default async function DartsPage() {
     where: { userId },
   });
 
-  const league = await prisma.dartsLeague.findFirst({
+  const leagues = await prisma.dartsLeague.findMany({
     orderBy: { createdAt: "desc" },
+    include: {
+      members: { select: { playerId: true } },
+      _count: { select: { matches: true } },
+    },
   });
+
+  const league = leagues[0] ?? null;
 
   const players = await prisma.dartsPlayer.findMany({
     include: {
@@ -170,6 +176,47 @@ export default async function DartsPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Leagues — join / leave */}
+      {myPlayer && leagues.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Ligen</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {leagues.map((l) => {
+              const cfg = l.matchConfig as { legsToWin?: number; startingScore?: number };
+              const isMember = l.members.some((m) => m.playerId === myPlayer.id);
+              return (
+                <div key={l.id} className="flex items-center justify-between rounded-md border px-4 py-2 gap-2">
+                  <div>
+                    <span className="text-sm font-medium">{l.name}</span>
+                    <span className="text-xs text-muted-foreground ml-2">
+                      {cfg.startingScore ?? 501} · First to {cfg.legsToWin ?? 3} Legs · {l.members.length} Spieler · {l._count.matches} Matches
+                    </span>
+                  </div>
+                  <form
+                    action={async () => {
+                      "use server";
+                      if (isMember) await leaveLeague(l.id);
+                      else await joinLeague(l.id);
+                    }}
+                  >
+                    <Button
+                      type="submit"
+                      variant={isMember ? "outline" : "default"}
+                      size="sm"
+                      className="shrink-0"
+                    >
+                      {isMember ? "Verlassen" : "Beitreten"}
+                    </Button>
+                  </form>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       )}
 
       {/* Accepted challenges needing result */}

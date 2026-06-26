@@ -22,7 +22,12 @@ export default async function AdminDartsPage() {
 
   const leagues = await prisma.dartsLeague.findMany({
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { matches: true } } },
+    include: {
+      _count: { select: { matches: true } },
+      members: {
+        include: { player: { include: { user: { select: { name: true, email: true } } } } },
+      },
+    },
   });
 
   const players = await prisma.dartsPlayer.findMany({
@@ -137,6 +142,7 @@ export default async function AdminDartsPage() {
                   <TableHead className="text-right">Start-ELO</TableHead>
                   <TableHead className="text-right">Matches</TableHead>
                   <TableHead>Erstellt</TableHead>
+                  <TableHead>Mitglieder</TableHead>
                   <TableHead />
                 </TableRow>
               </TableHeader>
@@ -154,6 +160,15 @@ export default async function AdminDartsPage() {
                       <TableCell className="text-right">{l._count.matches}</TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {new Date(l.createdAt).toLocaleDateString("de-DE")}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {l.members.length === 0 ? (
+                          <span className="text-muted-foreground">–</span>
+                        ) : (
+                          <span className="text-xs">
+                            {l.members.map((m) => m.player.user.name ?? m.player.user.email).join(", ")}
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <DeleteLeagueButton leagueId={l.id} leagueName={l.name} />

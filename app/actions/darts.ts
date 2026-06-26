@@ -52,6 +52,40 @@ export async function registerDartsPlayer(): Promise<{ error?: string }> {
   return {};
 }
 
+// ─── D1a2: Join / leave a league ─────────────────────────────────────────────
+
+export async function joinLeague(leagueId: string): Promise<{ error?: string }> {
+  const session = await requireAuth();
+
+  const player = await prisma.dartsPlayer.findUnique({ where: { userId: session.user.id } });
+  if (!player) return { error: "Du bist noch nicht als Spieler registriert." };
+
+  await prisma.dartsLeagueMember.upsert({
+    where: { leagueId_playerId: { leagueId, playerId: player.id } },
+    create: { leagueId, playerId: player.id },
+    update: {},
+  });
+
+  revalidatePath("/darts");
+  revalidatePath("/admin/darts");
+  return {};
+}
+
+export async function leaveLeague(leagueId: string): Promise<{ error?: string }> {
+  const session = await requireAuth();
+
+  const player = await prisma.dartsPlayer.findUnique({ where: { userId: session.user.id } });
+  if (!player) return { error: "Spieler nicht gefunden." };
+
+  await prisma.dartsLeagueMember.deleteMany({
+    where: { leagueId, playerId: player.id },
+  });
+
+  revalidatePath("/darts");
+  revalidatePath("/admin/darts");
+  return {};
+}
+
 // ─── D1b: Send challenge ──────────────────────────────────────────────────────
 
 const CHALLENGE_EXPIRY_DAYS = 7;
