@@ -350,7 +350,7 @@ export async function recordMatch(
       }),
     });
 
-    await applyElo(tx, match.id, challenge.challengerId, challenge.opponentId, legsA, legsB, kFactor, league?.id);
+    // ELO is applied on confirmation, not submission
   });
 
   revalidatePath("/darts");
@@ -377,6 +377,12 @@ export async function confirmMatch(matchId: string): Promise<{ error?: string }>
     return { error: "Nur der andere Spieler kann das Ergebnis bestätigen." };
   }
 
+  const league = match.leagueId
+    ? await prisma.dartsLeague.findUnique({ where: { id: match.leagueId } })
+    : null;
+  const kFactor = league?.kFactor ?? 32;
+  const matchConfig = match.matchConfig as { legsA: number; legsB: number };
+
   await prisma.$transaction(async (tx) => {
     await tx.dartsMatch.update({ where: { id: matchId }, data: { status: "CONFIRMED" } });
     if (match.challengeId) {
@@ -385,6 +391,7 @@ export async function confirmMatch(matchId: string): Promise<{ error?: string }>
         data: { status: "COMPLETED" },
       });
     }
+    await applyElo(tx, matchId, match.playerAId, match.playerBId, matchConfig.legsA, matchConfig.legsB, kFactor, match.leagueId);
   });
 
   revalidatePath("/darts");
