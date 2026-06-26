@@ -524,6 +524,36 @@ export async function createLeague(
 
 export async function deleteLeague(id: string) {
   await requireAdmin();
-  await prisma.dartsLeague.delete({ where: { id } });
+
+  const matches = await prisma.dartsMatch.findMany({
+    where: { leagueId: id },
+    select: { id: true, challengeId: true },
+  });
+
+  await prisma.$transaction(async (tx) => {
+    // Reverse ELO for every match in this league
+    for (const m of matches) {
+      await reverseElo(tx, m.id);
+    }
+
+    // Delete legs + matches (eloHistory cascades via schema)
+    const matchIds = matches.map((m) => m.id);
+    await tx.dartsLeg.deleteMany({ where: { matchId: { in: matchIds } } });
+    await tx.dartsMatch.deleteMany({ where: { id: { in: matchIds } } });
+
+    // Reset associated challenges back to ACCEPTED so players can re-enter results
+    const challengeIds = matches.map((m) => m.challengeId).filter(Boolean) as string[];
+    if (challengeIds.length > 0) {
+      await tx.dartsChallenge.updateMany({
+        where: { id: { in: challengeIds } },
+        data: { status: "ACCEPTED" },
+      });
+    }
+
+    await tx.dartsLeague.delete({ where: { id } });
+  });
+
+  revalidatePath("/darts");
+  revalidatePath("/darts/challenges");
   revalidatePath("/admin/darts");
 }
