@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -178,6 +179,11 @@ async function reverseElo(
 
 // ─── D1d: Record match result (step 1 — submit, awaiting confirmation) ────────
 
+const LegDataSchema = z.object({
+  winner: z.enum(["A", "B"]),
+  checkout: z.coerce.number().int().min(1).max(170).optional(),
+});
+
 const RecordMatchSchema = z.object({
   challengeId: z.string().min(1),
   leagueId: z.string().optional(),
@@ -202,6 +208,15 @@ export async function recordMatch(
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
 
   const { challengeId, leagueId, legsA, legsB } = parsed.data;
+  const totalLegs = legsA + legsB;
+
+  // Parse per-leg data: leg_winner_1, leg_checkout_1, ...
+  const legDataEntries = Array.from({ length: totalLegs }, (_, i) => {
+    const n = i + 1;
+    const raw = { winner: formData.get(`leg_winner_${n}`), checkout: formData.get(`leg_checkout_${n}`) || undefined };
+    const result = LegDataSchema.safeParse(raw);
+    return result.success ? result.data : null;
+  });
 
   const challenge = await prisma.dartsChallenge.findUnique({
     where: { id: challengeId },
@@ -242,13 +257,21 @@ export async function recordMatch(
       },
     });
 
-    const totalLegs = legsA + legsB;
     await tx.dartsLeg.createMany({
-      data: Array.from({ length: totalLegs }, (_, i) => ({
-        matchId: match.id,
-        legNumber: i + 1,
-        winnerId: null,
-      })),
+      data: Array.from({ length: totalLegs }, (_, i) => {
+        const legData = legDataEntries[i];
+        const legWinnerId = legData?.winner === "A"
+          ? challenge.challengerId
+          : legData?.winner === "B"
+          ? challenge.opponentId
+          : null;
+        return {
+          matchId: match.id,
+          legNumber: i + 1,
+          winnerId: legWinnerId,
+          legData: legData ? { winner: legData.winner, checkout: legData.checkout ?? null } : Prisma.JsonNull,
+        };
+      }),
     });
 
     await applyElo(tx, match.id, challenge.challengerId, challenge.opponentId, legsA, legsB, kFactor);

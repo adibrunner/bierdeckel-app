@@ -43,6 +43,7 @@ export default async function MatchPage({
         include: {
           winner: { select: { id: true, name: true, email: true } },
           submittedBy: { select: { id: true, name: true, email: true } },
+          legs: { orderBy: { legNumber: "asc" } },
           eloHistory: {
             include: { player: { include: { user: { select: { name: true, email: true } } } } },
           },
@@ -187,6 +188,35 @@ export default async function MatchPage({
             <p className="text-sm text-center text-muted-foreground">
               Sieger: <strong>{match.winner?.name ?? match.winner?.email}</strong>
             </p>
+
+            {/* Leg breakdown */}
+            {match.legs.length > 0 && match.legs.some((l) => l.winnerId !== null) && (
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Legs</p>
+                <div className="divide-y text-xs">
+                  {match.legs.map((leg) => {
+                    const legData = leg.legData as { winner?: string; checkout?: number } | null;
+                    const winnerName = leg.winnerId === challenge.challengerId
+                      ? challengerName
+                      : leg.winnerId === challenge.opponentId
+                      ? opponentName
+                      : "–";
+                    return (
+                      <div key={leg.id} className="flex justify-between py-1.5">
+                        <span className="text-muted-foreground">Leg {leg.legNumber}</span>
+                        <span className="font-medium">
+                          {winnerName}
+                          {legData?.checkout ? (
+                            <span className="ml-1.5 text-muted-foreground font-normal">({legData.checkout} checkout)</span>
+                          ) : null}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <div className="divide-y text-sm">
               {match.eloHistory.map((h) => {
                 const diff = h.ratingAfter - h.ratingBefore;

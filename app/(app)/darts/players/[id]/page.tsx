@@ -66,6 +66,28 @@ export default async function PlayerProfilePage({
   const losses = matches.length - wins;
   const winRate = matches.length > 0 ? Math.round((wins / matches.length) * 100) : 0;
 
+  // Personal best ELO
+  const peakElo = player.eloHistory.reduce(
+    (max, h) => Math.max(max, h.ratingAfter),
+    player.eloHistory[0]?.ratingBefore ?? player.currentElo
+  );
+  const isAtPeak = player.currentElo === peakElo && player.eloHistory.length > 0;
+
+  // Nemesis: opponent you've lost to most
+  const lossMap = new Map<string, { name: string; count: number }>();
+  for (const m of matches) {
+    if (m.winnerId !== player.userId) {
+      const isPlayerA = m.playerAId === player.userId;
+      const opp = isPlayerA ? m.playerB : m.playerA;
+      const oppId = isPlayerA ? m.playerBId : m.playerAId;
+      const oppName = opp.name ?? opp.email ?? oppId;
+      const prev = lossMap.get(oppId);
+      lossMap.set(oppId, { name: oppName, count: (prev?.count ?? 0) + 1 });
+    }
+  }
+  const nemesis = [...lossMap.entries()]
+    .sort((a, b) => b[1].count - a[1].count)[0] ?? null;
+
   // ELO chart data
   const eloPoints = [
     { label: "Start", elo: player.eloHistory[0]?.ratingBefore ?? player.currentElo },
@@ -129,6 +151,46 @@ export default async function PlayerProfilePage({
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">{winRate}%</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Personal best + Nemesis */}
+      <div className="grid grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <Trophy className="h-3.5 w-3.5" /> Persönliche Bestmarke
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0.5">
+            <p className="text-3xl font-bold">{peakElo}</p>
+            {isAtPeak ? (
+              <p className="text-xs text-green-600 font-medium">Aktuelles Maximum</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                aktuell {player.currentElo} ({player.currentElo - peakElo})
+              </p>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <TrendingDown className="h-3.5 w-3.5 text-destructive" /> Nemesis
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0.5">
+            {nemesis ? (
+              <>
+                <p className="text-xl font-bold truncate">{nemesis[1].name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {nemesis[1].count} {nemesis[1].count === 1 ? "Niederlage" : "Niederlagen"}
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground pt-1">Noch keine Niederlagen.</p>
+            )}
           </CardContent>
         </Card>
       </div>
