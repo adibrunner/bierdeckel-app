@@ -6,7 +6,11 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrismaClient() {
-  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+  // Append pgbouncer=true so Prisma avoids prepared statements,
+  // which are incompatible with Supabase transaction-mode pooling (port 6543).
+  const url = process.env.DATABASE_URL!;
+  const connectionString = url.includes("pgbouncer=true") ? url : `${url}${url.includes("?") ? "&" : "?"}pgbouncer=true`;
+  const adapter = new PrismaPg({ connectionString });
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
