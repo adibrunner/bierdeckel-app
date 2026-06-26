@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/competitions", label: "Tipps", icon: Trophy },
-  { href: "/darts", label: "Double-Trouble-Liga", icon: Target, badge: true },
+  { href: "/darts", label: "Darts", icon: Target, badge: true },
 ];
 
 const adminNavItems = [
