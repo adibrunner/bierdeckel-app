@@ -52,6 +52,18 @@ export default async function DartsPage() {
     where: { opponentId: userId, status: "PENDING" },
   });
 
+  const myAcceptedChallenges = await prisma.dartsChallenge.findMany({
+    where: {
+      OR: [{ challengerId: userId }, { opponentId: userId }],
+      status: "ACCEPTED",
+      match: null,
+    },
+    include: {
+      challenger: { select: { name: true, email: true } },
+      opponent: { select: { name: true, email: true } },
+    },
+  });
+
   const leagueConfig = league?.matchConfig as { legsToWin?: number } | null;
 
   return (
@@ -154,6 +166,32 @@ export default async function DartsPage() {
         </div>
       )}
 
+      {/* Accepted challenges needing result */}
+      {myAcceptedChallenges.length > 0 && (
+        <Card className="border-primary/40 bg-primary/5">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2 text-primary">
+              <Swords className="h-4 w-4" /> Matches ausstehend
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {myAcceptedChallenges.map((c) => {
+              const isChallenger = c.challengerId === userId;
+              const other = isChallenger ? c.opponent : c.challenger;
+              const otherName = other.name ?? other.email;
+              return (
+                <div key={c.id} className="flex items-center justify-between rounded-md border bg-background px-4 py-2">
+                  <span className="text-sm">Match gegen <strong>{otherName}</strong> – Ergebnis fehlt noch</span>
+                  <Link href={`/darts/matches/${c.id}`} className={cn(buttonVariants({ size: "sm" }))}>
+                    Eintragen
+                  </Link>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Standings */}
       <Card>
         <CardHeader>
@@ -181,7 +219,9 @@ export default async function DartsPage() {
                     <TableRow key={p.id} className={isMe ? "bg-muted/40" : undefined}>
                       <TableCell className="text-muted-foreground font-medium">{i + 1}</TableCell>
                       <TableCell className="font-medium">
-                        {p.user.name ?? p.user.email}
+                        <Link href={`/darts/players/${p.userId}`} className="hover:underline">
+                          {p.user.name ?? p.user.email}
+                        </Link>
                         {isMe && (
                           <Badge variant="outline" className="ml-2 text-xs">Du</Badge>
                         )}

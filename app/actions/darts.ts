@@ -229,6 +229,7 @@ export async function recordMatch(
 
   revalidatePath("/darts");
   revalidatePath("/darts/challenges");
+  revalidatePath(`/darts/matches/${challengeId}`);
   return {};
 }
 

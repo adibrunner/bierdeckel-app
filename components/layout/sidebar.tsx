@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator";
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/competitions", label: "Tipps", icon: Trophy },
-  { href: "/darts", label: "Double-Trouble-Liga", icon: Target },
+  { href: "/darts", label: "Double-Trouble-Liga", icon: Target, badge: true },
 ];
 
 const adminNavItems = [
@@ -37,7 +37,11 @@ const adminOnlyItems = [
   { href: "/admin/darts", label: "Darts-Liga", icon: Target },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  pendingChallenges?: number;
+}
+
+export function Sidebar({ pendingChallenges = 0 }: SidebarProps) {
   const pathname = usePathname();
   const { data: session } = useSession();
   const isAdmin = session?.user?.role === "ADMIN";
@@ -58,7 +62,7 @@ export function Sidebar() {
       </div>
 
       <nav className="flex-1 space-y-1">
-        {navItems.map(({ href, label, icon: Icon }) => (
+        {navItems.map(({ href, label, icon: Icon, badge }) => (
           <Link
             key={href}
             href={href}
@@ -71,6 +75,11 @@ export function Sidebar() {
           >
             <Icon className="h-4 w-4 shrink-0" />
             {label}
+            {badge && pendingChallenges > 0 && (
+              <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-semibold text-destructive-foreground leading-none">
+                {pendingChallenges > 9 ? "9+" : pendingChallenges}
+              </span>
+            )}
           </Link>
         ))}
 

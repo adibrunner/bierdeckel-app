@@ -1,10 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { RecordMatchForm } from "@/components/darts/record-match-form";
-import { Target, Trophy } from "lucide-react";
+import { Target, Trophy, ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default async function MatchPage({
   params,
@@ -47,6 +50,12 @@ export default async function MatchPage({
 
   return (
     <div className="max-w-lg mx-auto space-y-6">
+      <Link
+        href="/darts"
+        className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "-ml-2 text-muted-foreground")}
+      >
+        <ArrowLeft className="h-4 w-4 mr-1" /> Liga-Übersicht
+      </Link>
       <div>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Target className="h-6 w-6" /> Match

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { recordMatch } from "@/app/actions/darts";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,14 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
   const [state, action, pending] = useActionState(recordMatch, undefined);
   const [legsA, setLegsA] = useState<number>(legsToWin);
   const [legsB, setLegsB] = useState<number>(0);
+  const router = useRouter();
+
+  // Redirect to /darts on success (no error in state, state is defined after first submit)
+  useEffect(() => {
+    if (state !== undefined && !state?.error && !state?.errors) {
+      router.push("/darts");
+    }
+  }, [state, router]);
 
   // Generate valid leg score options: one side must reach legsToWin, no draw
   const options: { a: number; b: number }[] = [];
