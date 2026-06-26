@@ -23,6 +23,8 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
   const [legsB, setLegsB] = useState<number>(0);
   const [step, setStep] = useState<"score" | "legs">("score");
   const [legEntries, setLegEntries] = useState<LegEntry[]>([]);
+  const [avgA, setAvgA] = useState("");
+  const [avgB, setAvgB] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -59,6 +61,8 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
         <input type="hidden" name="challengeId" value={challengeId} />
         <input type="hidden" name="legsA" value={legsA} />
         <input type="hidden" name="legsB" value={legsB} />
+        {avgA && <input type="hidden" name="avgA" value={avgA} />}
+        {avgB && <input type="hidden" name="avgB" value={avgB} />}
         {legEntries.map((e, i) => (
           <input key={i} type="hidden" name={`leg_winner_${i + 1}`} value={e.winner ?? ""} />
         ))}
@@ -75,7 +79,40 @@ export function RecordMatchForm({ challengeId, legsToWin, challengerName, oppone
             <ArrowLeft className="h-3 w-3" /> Zurück zum Ergebnis ({legsA}–{legsB})
           </button>
           <p className="text-sm font-medium">Wer hat welches Leg gewonnen?</p>
-          <p className="text-xs text-muted-foreground">Checkout optional — hilft für Statistiken.</p>
+          <p className="text-xs text-muted-foreground">Checkout und Average optional — helfen für Statistiken.</p>
+        </div>
+
+        {/* Match averages */}
+        <div className="rounded-md border p-3 space-y-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Match-Average (optional)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">{challengerName}</Label>
+              <Input
+                type="number"
+                min={0}
+                max={170}
+                step={0.1}
+                placeholder="z.B. 52.4"
+                value={avgA}
+                onChange={(ev) => setAvgA(ev.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{opponentName}</Label>
+              <Input
+                type="number"
+                min={0}
+                max={170}
+                step={0.1}
+                placeholder="z.B. 48.1"
+                value={avgB}
+                onChange={(ev) => setAvgB(ev.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
         </div>
 
         <div className="space-y-3">

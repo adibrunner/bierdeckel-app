@@ -66,7 +66,7 @@ export default async function MatchPage({
   const opponentName = challenge.opponent.name ?? challenge.opponent.email ?? "";
 
   const match = challenge.match;
-  const matchConfig = match?.matchConfig as { legsA: number; legsB: number } | null;
+  const matchConfig = match?.matchConfig as { legsA: number; legsB: number; avgA?: number | null; avgB?: number | null } | null;
 
   // Is the current user the one who needs to confirm?
   const isConfirmer =
@@ -188,6 +188,21 @@ export default async function MatchPage({
             <p className="text-sm text-center text-muted-foreground">
               Sieger: <strong>{match.winner?.name ?? match.winner?.email}</strong>
             </p>
+
+            {/* Averages */}
+            {(matchConfig?.avgA != null || matchConfig?.avgB != null) && (
+              <div className="flex justify-around rounded-md bg-muted/50 py-2 text-sm">
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">{challengerName}</p>
+                  <p className="font-semibold">{matchConfig?.avgA ?? "–"}</p>
+                </div>
+                <div className="text-center text-xs text-muted-foreground self-center">Ø Average</div>
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground">{opponentName}</p>
+                  <p className="font-semibold">{matchConfig?.avgB ?? "–"}</p>
+                </div>
+              </div>
+            )}
 
             {/* Leg breakdown */}
             {match.legs.length > 0 && match.legs.some((l) => l.winnerId !== null) && (

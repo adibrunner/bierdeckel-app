@@ -73,6 +73,17 @@ export default async function PlayerProfilePage({
   );
   const isAtPeak = player.currentElo === peakElo && player.eloHistory.length > 0;
 
+  // Career average (mean of all recorded match averages for this player)
+  const matchAvgs = matches.flatMap((m) => {
+    const cfg = m.matchConfig as { legsA: number; legsB: number; avgA?: number | null; avgB?: number | null } | null;
+    const isPlayerA = m.playerAId === player.userId;
+    const avg = isPlayerA ? cfg?.avgA : cfg?.avgB;
+    return avg != null ? [avg] : [];
+  });
+  const careerAvg = matchAvgs.length > 0
+    ? (matchAvgs.reduce((s, v) => s + v, 0) / matchAvgs.length).toFixed(1)
+    : null;
+
   // Nemesis: opponent you've lost to most
   const lossMap = new Map<string, { name: string; count: number }>();
   for (const m of matches) {
@@ -155,6 +166,21 @@ export default async function PlayerProfilePage({
         </Card>
       </div>
 
+      {/* Career average */}
+      {careerAvg !== null && (
+        <Card>
+          <CardHeader className="pb-1">
+            <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              <TrendingUp className="h-3.5 w-3.5" /> Ø Match-Average
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-0.5">
+            <p className="text-3xl font-bold">{careerAvg}</p>
+            <p className="text-xs text-muted-foreground">Über {matchAvgs.length} {matchAvgs.length === 1 ? "Match" : "Matches"}</p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Personal best + Nemesis */}
       <div className="grid grid-cols-2 gap-4">
         <Card>
@@ -226,6 +252,7 @@ export default async function PlayerProfilePage({
                   <TableHead>Datum</TableHead>
                   <TableHead>Gegner</TableHead>
                   <TableHead className="text-center">Ergebnis</TableHead>
+                  <TableHead className="text-center">Avg</TableHead>
                   <TableHead className="text-center">ELO</TableHead>
                   <TableHead className="text-right">Ergebnis</TableHead>
                 </TableRow>
@@ -235,10 +262,11 @@ export default async function PlayerProfilePage({
                   const isPlayerA = m.playerAId === player.userId;
                   const opponent = isPlayerA ? m.playerB : m.playerA;
                   const opponentName = opponent.name ?? opponent.email;
-                  const config = m.matchConfig as { legsA: number; legsB: number };
-                  const myLegs = isPlayerA ? config.legsA : config.legsB;
-                  const oppLegs = isPlayerA ? config.legsB : config.legsA;
+                  const cfg = m.matchConfig as { legsA: number; legsB: number; avgA?: number | null; avgB?: number | null } | null;
+                  const myLegs = isPlayerA ? (cfg?.legsA ?? 0) : (cfg?.legsB ?? 0);
+                  const oppLegs = isPlayerA ? (cfg?.legsB ?? 0) : (cfg?.legsA ?? 0);
                   const won = m.winnerId === player.userId;
+                  const myAvg = isPlayerA ? cfg?.avgA : cfg?.avgB;
                   const eloEntry = player.eloHistory.find((h) => h.matchId === m.id);
                   const eloDiff = eloEntry ? eloEntry.ratingAfter - eloEntry.ratingBefore : null;
 
@@ -252,6 +280,9 @@ export default async function PlayerProfilePage({
                       <TableCell className="font-medium">{opponentName}</TableCell>
                       <TableCell className="text-center font-semibold">
                         {myLegs} – {oppLegs}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        {myAvg != null ? myAvg : <span className="text-muted-foreground">–</span>}
                       </TableCell>
                       <TableCell className="text-center">
                         {eloDiff !== null ? (

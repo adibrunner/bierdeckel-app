@@ -189,6 +189,8 @@ const RecordMatchSchema = z.object({
   leagueId: z.string().optional(),
   legsA: z.coerce.number().int().min(0),
   legsB: z.coerce.number().int().min(0),
+  avgA: z.coerce.number().min(0).max(170).optional(),
+  avgB: z.coerce.number().min(0).max(170).optional(),
 });
 
 export type RecordMatchState = { error?: string; errors?: Record<string, string[]> } | undefined;
@@ -204,10 +206,12 @@ export async function recordMatch(
     leagueId: formData.get("leagueId") || undefined,
     legsA: formData.get("legsA"),
     legsB: formData.get("legsB"),
+    avgA: formData.get("avgA") || undefined,
+    avgB: formData.get("avgB") || undefined,
   });
   if (!parsed.success) return { errors: parsed.error.flatten().fieldErrors };
 
-  const { challengeId, leagueId, legsA, legsB } = parsed.data;
+  const { challengeId, leagueId, legsA, legsB, avgA, avgB } = parsed.data;
   const totalLegs = legsA + legsB;
 
   // Parse per-leg data: leg_winner_1, leg_checkout_1, ...
@@ -250,7 +254,7 @@ export async function recordMatch(
         playerAId: challenge.challengerId,
         playerBId: challenge.opponentId,
         winnerId,
-        matchConfig: { legsA, legsB },
+        matchConfig: { legsA, legsB, avgA: avgA ?? null, avgB: avgB ?? null },
         playedAt: new Date(),
         status: "PENDING_CONFIRMATION",
         submittedById: session.user.id,
